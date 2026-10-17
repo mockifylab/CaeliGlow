@@ -1,3 +1,4 @@
 # CaeliGlow patch series, applied in order onto Noctalia v5.3.0 by scripts/apply-patches.sh.
 # Regenerate any of these with: (cd upstream/noctalia && git format-patch -1 -o ../../patches --start-number N)
 0001-caeliglow-bar-hover-add-Caelestia-style-scale-pop-on.patch
+0002-caeliglow-bottom-edge-launcher-reveal-via-HotCorners.patch

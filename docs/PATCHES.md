@@ -37,13 +37,34 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
   in `[bar.hover]` config and honor reduced-motion (the shared `animate()` already
   respects the global motion setting).
 
-## Planned — Bottom-edge launcher reveal
-- **Approach:** extend `src/shell/hot_corners/` (which already provides dwell
-  enter/leave trigger surfaces anchored to screen edges, calling
-  `triggerShellAction("launcher")`) with a wider bottom-center edge zone and an
-  open-only (non-toggle) launcher action, plus a `[hot_corners].bottom_edge` config.
-- **Status:** not yet implemented. Tracked so it can be built and verified in a
-  follow-up stage.
+## 0002 — Bottom-edge launcher reveal
+- **Files:** `src/shell/hot_corners/hot_corners.{h,cpp}`,
+  `src/config/config_types.h`, `src/config/schema/config_schema.cpp`
+- **What:** adds an optional wide, centered bottom-edge trigger strip to the existing
+  `HotCorners` subsystem. On pointer enter + configurable dwell (`delay_ms`), it fires
+  the existing `"launcher"` shell action, revealing the **same Noctalia launcher**
+  panel; leaving the strip disarms the timer (no stuck state). It reuses the corner
+  arming code (position `4`), so enter/leave/focus handling matches what already
+  ships.
+- **Config (opt-in, off by default so ordinary Noctalia is unchanged):**
+  ```toml
+  [hot_corners]
+  enabled = true
+  delay_ms = 120
+  edge_width = 0            # 0 = auto (~25% of the screen)
+  [hot_corners.bottom_edge]
+  action = "launcher"
+  ```
+- **Correctness:** anchored Bottom+Left+Right with a fixed width so the compositor
+  centers it per-output — behaves across multi-monitor and fractional scaling.
+- **Intentional difference from Caelestia:** Noctalia's launcher is a floating panel,
+  not a bar-docked surface, so Caelestia's exact concave-to-edge morph is not
+  reproduced; the reveal is Noctalia's own panel open animation. This is a documented,
+  independent re-implementation (no Caelestia GPL code/assets).
+- **Status:** **compiled** (full incremental rebuild + link, 287 targets) and
+  **config-tested** (`config_schema_roundtrip`, `cli_schema`, `config_migration`,
+  `config_validate_cli`, `config_widget`, `config_override_mutation` all pass: 6/6).
+  Not desktop-tested here (second-shell launch avoided over the live session).
 
 ## Planned — Right-edge power controls (+ remove duplicate power entry)
 - **Approach:** a right-edge vertically-mounted layer surface using Noctalia's own

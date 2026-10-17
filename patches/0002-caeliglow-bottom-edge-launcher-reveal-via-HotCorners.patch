@@ -1,0 +1,149 @@
+From 9382c3b52ee62b56db1fb86f94b28b96cc951c95 Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Sat, 17 Oct 2026 17:11:54 +0500
+Subject: [PATCH] caeliglow: bottom-edge launcher reveal via HotCorners edge
+ trigger + config
+
+---
+ src/config/config_types.h             |  7 ++++
+ src/config/schema/config_schema.cpp   |  3 ++
+ src/shell/hot_corners/hot_corners.cpp | 52 ++++++++++++++++++++++++++-
+ src/shell/hot_corners/hot_corners.h   |  2 ++
+ 4 files changed, 63 insertions(+), 1 deletion(-)
+
+diff --git a/src/config/config_types.h b/src/config/config_types.h
+index e16fb17c0..f0efc224e 100644
+--- a/src/config/config_types.h
++++ b/src/config/config_types.h
+@@ -1894,6 +1894,13 @@ struct HotCornersConfig {
+   Corner bottomLeft;
+   Corner bottomRight;
+ 
++  // CaeliGlow: a wide, centered trigger strip along the bottom edge (not just the two
++  // corners). Reveals the existing Noctalia launcher on hover+dwell. action="none" keeps
++  // it off, so ordinary Noctalia behavior is unchanged unless the user opts in.
++  Corner bottomEdge;
++  // Trigger strip width in logical px; 0 = auto (25% of the output width).
++  std::int32_t edgeWidth = 0;
++
+   bool operator==(const HotCornersConfig&) const = default;
+ };
+ 
+diff --git a/src/config/schema/config_schema.cpp b/src/config/schema/config_schema.cpp
+index 861982261..6ed7a197a 100644
+--- a/src/config/schema/config_schema.cpp
++++ b/src/config/schema/config_schema.cpp
+@@ -462,6 +462,9 @@ namespace noctalia::config::schema {
+         subTable(&HotCornersConfig::topRight, "top_right", cornerSchema),
+         subTable(&HotCornersConfig::bottomLeft, "bottom_left", cornerSchema),
+         subTable(&HotCornersConfig::bottomRight, "bottom_right", cornerSchema),
++        // CaeliGlow: bottom-edge launcher reveal trigger.
++        subTable(&HotCornersConfig::bottomEdge, "bottom_edge", cornerSchema),
++        field(&HotCornersConfig::edgeWidth, "edge_width"),
+     };
+     return s;
+   }
+diff --git a/src/shell/hot_corners/hot_corners.cpp b/src/shell/hot_corners/hot_corners.cpp
+index c4047e1f6..42f7c8976 100644
+--- a/src/shell/hot_corners/hot_corners.cpp
++++ b/src/shell/hot_corners/hot_corners.cpp
+@@ -27,6 +27,9 @@ namespace {
+     } else if (position == 2) {
+       action = config.bottomLeft.action;
+       command = config.bottomLeft.command;
++    } else if (position == 4) {  // CaeliGlow: bottom edge
++      action = config.bottomEdge.action;
++      command = config.bottomEdge.command;
+     } else {
+       action = config.bottomRight.action;
+       command = config.bottomRight.command;
+@@ -96,6 +99,15 @@ void HotCorners::ensureSurfaces() {
+     if (config.bottomRight.action != "none" && !config.bottomRight.action.empty()) {
+       buildCorner(instance->bottomRight, 3, out.output);
+     }
++    // CaeliGlow: bottom-edge reveal trigger (wide centered strip).
++    if (config.bottomEdge.action != "none" && !config.bottomEdge.action.empty()) {
++      std::int32_t strip = config.edgeWidth;
++      if (strip <= 0) {
++        const std::int32_t lw = out.effectiveLogicalWidth();
++        strip = (lw > 0) ? std::max<std::int32_t>(160, lw / 4) : 360;  // ~25% of the screen
++      }
++      buildBottomEdge(instance->bottomEdge, out.output, strip);
++    }
+ 
+     m_instances.push_back(std::move(instance));
+   }
+@@ -195,13 +207,51 @@ void HotCorners::buildCorner(Corner& corner, int position, wl_output* output) {
+   corner.surface->requestRedraw();
+ }
+ 
++// CaeliGlow: a wide, thin, horizontally-centered trigger strip pinned to the bottom edge.
++// It reuses the exact same dwell/enter/leave arming as the corner triggers (position 4),
++// so behavior is consistent and there are no new stuck-hover states. Anchoring Bottom +
++// Left + Right with a fixed width makes the compositor center the strip on every output,
++// which keeps it correct across multi-monitor and fractional scaling.
++void HotCorners::buildBottomEdge(Corner& corner, wl_output* output, std::int32_t stripWidth) {
++  const LayerShellLayer layer = m_app->hotCornerLayerForOutput(output);
++  const std::int32_t width = std::max<std::int32_t>(64, stripWidth);
++  constexpr std::int32_t size = kTriggerZoneSize;  // thin: barely intercepts the pointer
++
++  LayerSurfaceConfig surfaceConfig{
++      .nameSpace = "hot_corner_bottom_edge",
++      .layer = layer,
++      .anchor = LayerShellAnchor::Bottom | LayerShellAnchor::Left | LayerShellAnchor::Right,
++      .width = static_cast<std::uint32_t>(width),
++      .height = static_cast<std::uint32_t>(size),
++      .exclusiveZone = -1,
++  };
++
++  corner.surface = std::make_unique<LayerSurface>(*m_wayland, surfaceConfig);
++  corner.surface->initialize(output);
++
++  auto inputArea = ui::inputArea({});
++  inputArea->setPosition(0, 0);
++  inputArea->setSize(static_cast<float>(width), static_cast<float>(size));
++  inputArea->setOnEnter([this, &corner, output](const InputArea::PointerData&) { armCorner(corner, 4, output); });
++  inputArea->setOnLeave([this, &corner]() { disarmCorner(corner); });
++
++  corner.sceneRoot = std::move(inputArea);
++  corner.inputDispatcher.setSceneRoot(corner.sceneRoot.get());
++
++  corner.surface->setRenderContext(m_renderContext);
++  corner.surface->setSceneRoot(corner.sceneRoot.get());
++  corner.surface->requestRedraw();
++}
++
+ bool HotCorners::onPointerEvent(const PointerEvent& event) {
+   if (!m_lastEnabled || event.surface == nullptr) {
+     return false;
+   }
+ 
+   for (const auto& instance : m_instances) {
+-    Corner* corners[] = {&instance->topLeft, &instance->topRight, &instance->bottomLeft, &instance->bottomRight};
++    Corner* corners[] = {
++        &instance->topLeft, &instance->topRight, &instance->bottomLeft, &instance->bottomRight, &instance->bottomEdge
++    };
+     for (auto* corner : corners) {
+       if (corner->surface && event.surface == corner->surface->wlSurface()) {
+         switch (event.type) {
+diff --git a/src/shell/hot_corners/hot_corners.h b/src/shell/hot_corners/hot_corners.h
+index 407cfa000..c216444aa 100644
+--- a/src/shell/hot_corners/hot_corners.h
++++ b/src/shell/hot_corners/hot_corners.h
+@@ -43,11 +43,13 @@ private:
+     Corner topRight;
+     Corner bottomLeft;
+     Corner bottomRight;
++    Corner bottomEdge;  // CaeliGlow: wide centered bottom trigger strip
+   };
+ 
+   void ensureSurfaces();
+   void destroySurfaces();
+   void buildCorner(Corner& corner, int position, wl_output* output);
++  void buildBottomEdge(Corner& corner, wl_output* output, std::int32_t stripWidth);  // CaeliGlow
+   void armCorner(Corner& corner, int position, wl_output* output);
+   void disarmCorner(Corner& corner);
+   void triggerAction(const std::string& action, const std::string& command, wl_output* output);
+-- 
+2.56.0
+
