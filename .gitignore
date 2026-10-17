@@ -1,0 +1,20 @@
+# Local inspection/reference clones (not part of the distributed repo)
+.upstream/
+
+# Noctalia submodule build artifacts
+upstream/noctalia/build-*/
+upstream/noctalia/compile_commands.json
+
+# CaeliGlow build outputs
+build/
+build-*/
+*.o
+*.a
+
+# Scratch logs from local development
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

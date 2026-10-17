@@ -1,0 +1,52 @@
+From f88a041c613300dee8b21c59d511a639db38118d Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Sat, 17 Oct 2026 16:52:05 +0500
+Subject: [PATCH] caeliglow: bar hover - add Caelestia-style scale pop on
+ widget hover
+
+---
+ src/shell/bar/bar.cpp | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/src/shell/bar/bar.cpp b/src/shell/bar/bar.cpp
+index 46eadf6d8..3ab8edca9 100644
+--- a/src/shell/bar/bar.cpp
++++ b/src/shell/bar/bar.cpp
+@@ -423,6 +423,11 @@ namespace {
+   // Hover highlight: peak fill alpha of the widget-foreground tint, and the cross-axis inset
+   // (logical px, content-scaled) of per-member pills inside capsule groups.
+   constexpr float kWidgetHoverFillAlpha = 0.1F;
++  // CaeliGlow: subtle hover "pop" scale applied to a widget's render transform on
++  // pointer enter (returns to 1.0 on leave). Independent re-implementation of the
++  // lively Caelestia-style bar hover feel; Noctalia's contents/layout are unchanged
++  // because setScale() is a paint-only transform (origin defaults to node center).
++  constexpr float kWidgetHoverPopScale = 1.06F;
+   constexpr float kGroupHoverCrossInset = 2.0F;
+ 
+   // Sizes a run's hover overlays after the capsule geometry is final. Single runs (and plain
+@@ -2952,6 +2957,22 @@ void Bar::animateWidgetHoverHighlight(BarInstance& instance, Widget& widget, boo
+       },
+       {}, box
+   );
++
++  // CaeliGlow: drive a render-only scale "pop" on the widget's layout-bounds node so the
++  // hovered widget lifts toward the pointer like the Caelestia reference, without altering
++  // bar layout or widget contents. EaseOutBack gives the slight overshoot that reads as
++  // "springy"; release settles back to exactly 1.0.
++  if (Node* bounds = widget.layoutBoundsNode()) {
++    instance.animations.cancelForOwner(bounds);
++    const float from = bounds->scale();
++    const float to = hovered ? kWidgetHoverPopScale : 1.0F;
++    instance.animations.animate(
++        from, to, hovered ? Style::animNormal : Style::animFast,
++        hovered ? Easing::EaseOutBack : Easing::EaseOutCubic,
++        [bounds](float s) { bounds->setScale(s); }, {}, bounds
++    );
++  }
++
+   if (instance.surface != nullptr) {
+     instance.surface->requestRedraw();
+   }
+-- 
+2.56.0
+

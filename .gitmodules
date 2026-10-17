@@ -1,0 +1,3 @@
+[submodule "upstream/noctalia"]
+	path = upstream/noctalia
+	url = https://github.com/noctalia-dev/noctalia.git
