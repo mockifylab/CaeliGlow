@@ -1,0 +1,79 @@
+name: build-and-test
+
+# Validating / building CaeliGlow. On the `v*` tags it also stages a release.
+# NOTE: this workflow only prepares artifacts. It does NOT claim a release was
+# published or that checks passed on your hardware — publishing is Aasif's action
+# (see docs/UPDATING.md and the repository settings).
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Fast, dependency-light guard: compile + run the standalone CaeliGlow logic
+  # (version comparison + update state machine). Uses only g++ + nlohmann-json.
+  unit-logic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install minimal build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ nlohmann-json3-dev
+      - name: Build + run update/version unit tests
+        run: |
+          mkdir -p build
+          g++ -std=c++23 -Isrc/caeliglow tests/test_update_model.cpp -o build/test_update
+          ./build/test_update
+
+  # Full Noctalia + CaeliGlow patch build inside an Arch container.
+  shell-build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux/archlinux:latest
+    steps:
+      - name: Install toolchain + Noctalia deps
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            git meson ninja gcc just pkgconf \
+            wayland wayland-protocols libglvnd freetype2 fontconfig cairo pango harfbuzz \
+            libxkbcommon glib2 libsecret libsodium sdbus-cpp libpipewire wireplumber polkit \
+            pam curl libwebp libjxl libsndfile librsvg libqalculate libxml2 md4c \
+            tomlplusplus libical nlohmann-json stb jemalloc
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply patch series
+        run: ./scripts/apply-patches.sh
+      - name: Configure + build (debug)
+        working-directory: upstream/noctalia
+        run: |
+          just configure debug /usr/local
+          just build debug
+      - name: Run Noctalia unit tests
+        working-directory: upstream/noctalia
+        run: just test debug
+      - name: Stage release artifacts (on v* tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          # Never interpolate raw event fields into shell; pass via env and quote.
+          RELEASE_NAME: ${{ github.ref_name }}
+        run: |
+          case "$RELEASE_NAME" in
+            v[0-9]*) : ;;
+            *) echo "refusing unexpected tag name: $RELEASE_NAME" >&2; exit 1;;
+          esac
+          mkdir -p dist
+          cp upstream/noctalia/build-debug/noctalia "dist/noctalia-caeliglow" || true
+          cp VERSION dist/VERSION
+          printf '%s\n' "$RELEASE_NAME" > dist/TAG
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: caeliglow-${{ github.ref_name }}
+          path: dist/
