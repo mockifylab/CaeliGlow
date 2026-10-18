@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/brand/assets/social-preview.png" alt="CaeliGlow" width="100%" />
+<img src="docs/brand/assets/hero-animated.gif" alt="CaeliGlow — a crescent moon and twinkling stars over a night dreamscape" width="100%" />
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/brand/assets/wordmark.svg" />
@@ -9,7 +9,7 @@
 
 **A polished, Noctalia-based desktop shell for CachyOS + Hyprland.**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-8B7CF6?style=flat-square)](https://github.com/mockifylab/CaeliGlow/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-8B7CF6?style=flat-square)](https://github.com/mockifylab/CaeliGlow/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-4FE0C4?style=flat-square)](LICENSE)
 [![Built on Noctalia v5.3.0](https://img.shields.io/badge/built%20on-Noctalia%20v5.3.0-F5C86B?style=flat-square)](https://github.com/noctalia-dev/noctalia)
 [![Platform](https://img.shields.io/badge/CachyOS%20%C2%B7%20Hyprland%20%C2%B7%20Wayland-12172B?style=flat-square)](#supported-environment)
@@ -43,7 +43,7 @@ and setting exactly as upstream intended.
 | **Bar hover** | A Caelestia-style scale "pop" as you hover bar widgets — Noctalia's contents, layout, accordion expansion and fill highlight all preserved. | ✅ Compiled + relinked |
 | **Bottom edge** | An optional wide, centered bottom-edge strip; hover + dwell reveals the **existing** Noctalia launcher. | ✅ Compiled + config-tested |
 | **Right edge** | An optional thin, full-height right-edge strip whose `power` action opens Noctalia's own **SessionPanel** (labeled Shut Down / Restart / Suspend / Log Out + confirm countdown). Duplicate original power entries are hidden by default (restorable). | ✅ Compiled + `meson test` 153/153 |
-| **Settings › About** | A native "CaeliGlow" About section (version, Noctalia base, MIT attribution) with a live **Check for updates** against GitHub releases. | ✅ Compiled + `meson test` 153/153 |
+| **Settings › About** | A native "CaeliGlow" About section headed by the **animated crescent-moon mark** (twinkling stars, rendered in-shell from a bundled GIF), with version, Noctalia base, MIT attribution and a live **Check for updates** against GitHub releases. | ✅ Compiled + `meson test` |
 
 ## What it deliberately leaves unchanged
 
@@ -180,7 +180,7 @@ Full text: **[docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)** · **[LICENSE](LICENSE
 
 <div align="center">
 
-**Version 1.0.0** · Developer **Aasif** · [github.com/mockifylab/CaeliGlow](https://github.com/mockifylab/CaeliGlow)
+**Version 1.1.0** · Developer **Aasif** · [github.com/mockifylab/CaeliGlow](https://github.com/mockifylab/CaeliGlow)
 
 *Made with care for the CachyOS + Hyprland community.*
 

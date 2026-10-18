@@ -103,30 +103,42 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
   `git am --3way`. Not desktop-tested here (a second shell over the live Hyprland
   session was intentionally avoided).
 
-## 0004 — Native Settings "CaeliGlow About" + live update checker
-- **What:** a new native Settings section (id `about`, glyph `info-circle`, label
-  "CaeliGlow") added to Noctalia's Settings window. It shows the CaeliGlow version
-  (`-DCAELIGLOW_VERSION`), the Noctalia base version (`-DNOCTALIA_VERSION`) and MIT
-  attribution, plus a **live "Check for updates" button**.
-- **How it works:** the button calls `SettingsWindow::checkForUpdates()`, which uses
-  Noctalia's existing async `HttpClient` (owned by `Application`, injected via
+## 0004 — Native Settings "CaeliGlow About": animated logo + live update checker
+- **What:** a new native Settings section (id `about`, label "CaeliGlow") added to
+  Noctalia's Settings window. Its header shows the **animated crescent-moon mark**
+  (twinkling stars), the CaeliGlow version (`-DCAELIGLOW_VERSION`), the Noctalia base
+  version (`-DNOCTALIA_VERSION`) and MIT attribution, plus a **live "Check for updates"
+  button**.
+- **Animated logo:** a bundled GIF (`assets/caeliglow/logo-animated.gif`, a 128px variant
+  of the brand mark) is decoded once into GPU textures and cycled frame-by-frame by a
+  self-re-arming `Timer` — the same mechanism Noctalia's own desktop-sticker widget uses
+  (`decodeAnimatedGif` + `Image::setExternalTexture`). The `Image` node is re-attached on
+  every content rebuild; the loop stops when you leave the section and the textures are
+  freed when the window closes. If the GIF can't be decoded it falls back to the static
+  first frame.
+- **How the update check works:** the button calls `SettingsWindow::checkForUpdates()`,
+  which uses Noctalia's existing async `HttpClient` (owned by `Application`, injected via
   `setHttpClient`) to `GET` the `mockifylab/CaeliGlow` GitHub releases endpoint. The
   response is fed to the already unit-tested `caeliglow::update_model::evaluate()`
   semver state machine; the result is rendered back through a content rebuild.
+- **Version source:** `CAELIGLOW_VERSION` is read from the repository-root `VERSION` file
+  at configure time (meson `run_command`), so `VERSION` is the single source of truth.
 - **Safety:** gated by `shell.offlineMode` (no network when enabled); non-2xx / 403 /
   429 / transport failures map to error/rate-limited/offline states; release notes are
   shown as **plain text and never executed**; the callback runs on the main loop and
   `SettingsWindow` is a long-lived `Application` member (lifetime-safe `this` capture).
 - **Files:** `src/caeliglow/{version,update_model,meta}.hpp` (vendored + new meta),
-  `src/shell/settings/settings_content_about.{h,cpp}` (new), plus registration edits
-  in `settings_registry.{h,cpp}` (section 24→25), `settings_window.h`,
+  `src/shell/settings/settings_content_about.{h,cpp}` (new), the bundled
+  `assets/caeliglow/logo-animated.gif`, plus registration edits in
+  `settings_registry.{h,cpp}` (section 24→25), `settings_window.{h,cpp}`,
   `settings_window_scene.cpp`, `settings_content.cpp`, `application_ui.cpp`,
   `meson.build`, `assets/translations/en.json`.
-- **Status:** **compiled** (full incremental rebuild + link of all 152 targets, new
-  `settings_content_about.cpp.o` in `libnoctalia_core.a`) and **regression-tested**
-  (`meson test`: **153/153 OK, 0 fail**). Series 0001→0002→0003→0004 verified to apply
-  cleanly onto a pristine v5.3.0 via `git am --3way`. Not desktop-tested here (a second
-  shell over the live Hyprland session was intentionally avoided).
+- **Status:** **compiled** (clean from-scratch debug build, 283 targets linked into
+  `noctalia`; new `settings_content_about.cpp.o` in `libnoctalia_core.a`) and
+  **regression-tested** (`meson test`: **153/153 OK, 0 fail**). Series
+  0001→0002→0003→0004 (binary GIF included) verified to apply cleanly onto a pristine
+  v5.3.0 via `git am --3way`. Not desktop-tested here (a second shell over the live
+  Hyprland session was intentionally avoided).
 
 ---
 

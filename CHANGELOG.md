@@ -4,6 +4,32 @@ All notable changes to CaeliGlow are documented here. The format follows
 Keep-a-Changelog; CaeliGlow uses Semantic Versioning. CaeliGlow's version is read
 from the single canonical `VERSION` file.
 
+## [1.1.0] - 2026-10-18
+
+Brand refresh + the animated mark rendered in-shell.
+
+### Added
+- **New crescent-moon identity:** the logo is now an original animated mark — a
+  blue→violet crescent cradling a 4-point sparkle star, ringed by twinkling gold
+  sparkles. Ships as static (`logo.svg`/`logo.png`), animated (`logo-animated.gif`/
+  `.svg`), a wordmark, and a cinematic animated hero (`hero-animated.gif`) plus a
+  GitHub social-preview. All generated from `scripts/gen_brand_assets.py` and
+  `scripts/gen_hero.py` (original artwork; no upstream logos reused).
+- **Animated logo in Settings › About (extends patch 0004):** the About header now
+  shows the crescent-moon mark with its stars actually twinkling *inside the shell*.
+  A bundled 128px GIF is decoded once into GPU textures and cycled by a self-re-arming
+  `Timer`, mirroring Noctalia's own desktop-sticker GIF playback. Frames persist across
+  content rebuilds (the `Image` node is re-attached each rebuild), the timer stops when
+  you leave the section, and textures are freed when the window closes. Falls back to
+  the static first frame if the GIF can't be decoded.
+
+### Changed
+- **Version is now read from the root `VERSION` file at configure time** (meson
+  `run_command`) instead of a hard-coded string, so `VERSION` is the single source of
+  truth for `--version`, the About section, and the update checker.
+- README hero now uses the animated banner; brand guidelines + asset inventory updated
+  to the crescent-and-sparkle motif.
+
 ## [1.0.0] - unreleased (development)
 
 Initial CaeliGlow release, built as a patch series over **Noctalia v5.3.0 (MIT)**.

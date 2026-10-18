@@ -41,7 +41,7 @@ Why this wins:
 | Safe on the machine | Installs to `/usr/local`; the distro `noctalia` package is never overwritten. |
 | License-clean | MIT throughout; Caelestia is a *behavioral reference only* — zero code/assets copied. |
 
-## What ships in 1.0.0
+## What ships
 
 - **Bar hover** — Caelestia-style scale "pop" on widget hover; all Noctalia widget
   contents/layout/accordion preserved.
@@ -50,9 +50,12 @@ Why this wins:
 - **Right edge → power** — opt-in thin full-height strip; new `power` action opens
   Noctalia's native **SessionPanel** (labeled actions + confirm countdown). Duplicate
   original power buttons hidden by default, restorable in config.
-- **Settings › About + update check** — native "CaeliGlow" section with version, base
-  version and a live "Check for updates" wired through Noctalia's async `HttpClient`
-  to GitHub releases, rendered through a fully unit-tested semver state machine.
+- **Settings › About + update check** — native "CaeliGlow" section headed by the
+  **animated crescent-moon mark** (twinkling stars, rendered in-shell from a bundled GIF),
+  with version, base version and a live "Check for updates" wired through Noctalia's async
+  `HttpClient` to GitHub releases, rendered through a fully unit-tested semver state machine.
+- **Brand (1.1.0)** — an original animated crescent-and-sparkle identity: static + animated
+  logo, wordmark and a cinematic animated hero, all generated from scripts in `scripts/`.
 
 Every edge feature is **opt-in**; absent the config, the build behaves exactly like plain
 Noctalia.

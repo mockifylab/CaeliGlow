@@ -5,7 +5,7 @@ interactions** and **hardening the delivery pipeline**, not about growing a fork
 
 Legend: ✅ shipped · 🚧 in progress · 📌 planned · 💡 ideas
 
-## 1.0.0 — Foundation (current)
+## 1.0.0 — Foundation ✅ shipped
 
 - ✅ Bar hover: Caelestia-style scale "pop", Noctalia widgets preserved (patch 0001).
 - ✅ Bottom-edge launcher reveal via HotCorners dwell (patch 0002).
@@ -16,7 +16,18 @@ Legend: ✅ shipped · 🚧 in progress · 📌 planned · 💡 ideas
 - ✅ Repo pipeline: pinned v5.3.0 submodule, `git am` patch series, build/install/rollback
   scripts, tested logic, docs, brand identity, CI.
 
-## 1.1 — On-device confidence
+## 1.1.0 — Animated brand identity (current)
+
+- ✅ Original crescent-and-sparkle mark, redrawn as **animated** assets: static
+  `logo.svg`/`logo.png`, `logo-animated.gif`/`.svg`, wordmark, and a cinematic animated
+  hero + social preview, all generated from `scripts/gen_brand_assets.py` /
+  `scripts/gen_hero.py`.
+- ✅ **Animated logo rendered in-shell** in Settings › About — bundled GIF decoded to GPU
+  textures and cycled by a self-re-arming timer (Noctalia's sticker mechanism), with clean
+  teardown and a static fallback (extends patch 0004).
+- ✅ Version read from the root `VERSION` file at configure time (single source of truth).
+
+## 1.2 — On-device confidence
 
 - 📌 **Live desktop verification** across the matrix: single/multi-monitor, fractional
   scaling, high-DPI. Capture the results into `docs/PATCHES.md`.
@@ -25,14 +36,14 @@ Legend: ✅ shipped · 🚧 in progress · 📌 planned · 💡 ideas
 - 📌 Edge-trigger configurability: let bottom/right actions be remapped to more of
   Noctalia's native `triggerShellAction` targets (control center, overview, window switcher).
 
-## 1.2 — Updates, safely automated
+## 1.3 — Updates, safely automated
 
 - 📌 **One-click install of a newer release** — download the asset, verify a checksum, and
   stage via the existing `/usr/local` path. Explicit, reversible, never auto-executed.
 - 📌 Channel selection (stable vs pre-release) surfaced in Settings.
 - 📌 Optional "what's new" panel sourced from release notes as text.
 
-## 1.3 — Polish & reach
+## 1.4 — Polish & reach
 
 - 💡 Theme-aware accent for the glow (tie the brand palette to Noctalia's active palette).
 - 💡 Haptics-adjacent micro-feedback (respect reduced-motion setting).

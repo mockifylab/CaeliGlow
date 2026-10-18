@@ -1,14 +1,29 @@
-# CaeliGlow 1.0.0
+# CaeliGlow 1.1.0
 
-The first release of **CaeliGlow** — a polished, **Noctalia-based** desktop shell for
-**CachyOS + Hyprland**. CaeliGlow is a small, documented **patch series over a pinned
-Noctalia `v5.3.0`**, rebuilt from source. It keeps *everything* that makes Noctalia feel
-like Noctalia and adds a few specific, opt-in interactions.
+**CaeliGlow** — a polished, **Noctalia-based** desktop shell for **CachyOS + Hyprland**.
+A small, documented **patch series over a pinned Noctalia `v5.3.0`**, rebuilt from source.
+It keeps *everything* that makes Noctalia feel like Noctalia and adds a few specific,
+opt-in interactions.
 
 > **Not a rewrite, not a plugin.** Additive by default, reversible in one command, and it
 > never overwrites your distro `noctalia` package or touches boot/EFI/partitions.
 
-## What's new
+## What's new in 1.1.0
+
+- **A new crescent-moon identity.** The logo is now an original **animated** mark — a
+  blue→violet crescent cradling a glowing 4-point sparkle star, ringed by twinkling gold
+  sparkles — with a matching cinematic animated hero for the README and GitHub social
+  preview. All of it is generated from scripts in `scripts/` and is original artwork.
+- **The animated logo lives inside the shell.** Settings › About is now headed by the
+  crescent-moon mark with its **stars twinkling in real time**, rendered from a bundled
+  GIF decoded once into GPU textures and cycled frame-by-frame (the same mechanism
+  Noctalia uses for desktop stickers). It cleans up after itself: the loop pauses when
+  you leave the section and its textures are freed when Settings closes.
+- **Single source of truth for the version.** The build now reads the root `VERSION`
+  file at configure time, so `--version`, the About section and the update checker can
+  never drift from the tagged release again.
+
+## The CaeliGlow feature set
 
 ### Bar hover (patch 0001)
 A Caelestia-style scale "pop" as you hover bar widgets. Noctalia's widget contents,
@@ -25,11 +40,12 @@ built-in confirm countdown. The duplicate original power entries (Control Center
 and Launcher toolbar) are hidden by default and are restorable in config.
 
 ### Settings › About + live update check (patch 0004)
-A native "CaeliGlow" Settings section showing the CaeliGlow version, the Noctalia base
-version and MIT attribution, plus a **live "Check for updates"** button. It queries the
-GitHub releases endpoint through Noctalia's own async HTTP client and reports the result
-via a fully unit-tested semver state machine. Honors `shell.offlineMode`; release notes
-are shown as plain text and never executed.
+A native "CaeliGlow" Settings section — headed by the **animated crescent-moon mark** —
+showing the CaeliGlow version, the Noctalia base version and MIT attribution, plus a
+**live "Check for updates"** button. It queries the GitHub releases endpoint through
+Noctalia's own async HTTP client and reports the result via a fully unit-tested semver
+state machine. Honors `shell.offlineMode`; release notes are shown as plain text and
+never executed.
 
 ## Configuration
 

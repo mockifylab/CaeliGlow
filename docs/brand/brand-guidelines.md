@@ -1,8 +1,9 @@
 # CaeliGlow Brand Guidelines
 
-CaeliGlow is a calm, premium, night-sky aesthetic: **a soft aurora glow over a deep
-indigo night**. It signals "Noctalia, but warmer and more alive" — restrained motion,
-luminous accents, generous negative space. Never loud, never busy.
+CaeliGlow is a calm, premium, night-sky aesthetic: **a luminous crescent moon cradling
+a glowing star, over a deep indigo night**. It signals "Noctalia, but warmer and more
+alive" — restrained motion, luminous accents, generous negative space. Never loud, never
+busy.
 
 ## Name
 
@@ -12,19 +13,30 @@ luminous accents, generous negative space. Never loud, never busy.
 
 ## Logo
 
-- **Primary mark** — `assets/logo.svg`: the aurora "C" arc with a single star on a
-  rounded night plate. Use when a square icon is needed (app icon, favicon, avatars).
+The mark is a **crescent moon** (deep-navy → blue → violet gradient, warm gold tips on
+the two horns) cradling a large **4-point sparkle star** (white core fading to violet),
+ringed by smaller **twinkling gold sparkles**. It reads as "a glow in the night sky."
+
+- **Static mark** — `assets/logo.svg` / `assets/logo.png`: transparent, no text. Use
+  wherever a square icon is needed (app icon, favicon, avatars).
+- **Animated mark** — `assets/logo-animated.gif` / `assets/logo-animated.svg`: the same
+  scene with the stars twinkling and the central sparkle pulsing. Use in motion contexts
+  (README, web) and **in-shell** — a 128px variant is bundled and rendered in Settings ›
+  About.
 - **Wordmark lockup** — `assets/wordmark.svg`: mark + "CaeliGlow" + eyebrow. Use for
-  headers, README hero, titles.
-- **Hero / social preview** — `assets/social-preview.png` (1280×731, <1 MB): the wide
-  banner for the README and GitHub "Social preview" setting.
+  headers, README, titles.
+- **Hero / social preview** — `assets/hero-animated.gif` (motion) and
+  `assets/social-preview.png` (1280×640, <1 MB, for the GitHub "Social preview" setting):
+  the cinematic moon-over-a-dreamscape banner.
 
 Rules:
 
-- Keep clear space equal to the height of the arc around the mark.
-- Minimum on-screen size for the mark: **32 px**. Below that, drop the plate border.
-- Never recolor the arc gradients, stretch, rotate, add drop shadows, or place the
-  wordmark on a busy photo without a dark scrim.
+- Keep clear space around the mark equal to the height of the crescent's opening.
+- Minimum on-screen size for the mark: **32 px**. Below that, use the static PNG.
+- The animation is **subtle** — twinkle + gentle pulse only. Never spin, bounce, or add
+  busy motion; it must stay calm.
+- Never recolor the crescent/sparkle gradients, stretch, rotate, add drop shadows, or
+  place the wordmark on a busy photo without a dark scrim.
 - Never reuse **Noctalia's** or **Caelestia's** logos; CaeliGlow is an independent,
   unaffiliated customization (see `docs/ATTRIBUTION.md`).
 
@@ -42,9 +54,10 @@ Rules:
 | Text muted | `#B9C4E8` | Haze | Secondary text |
 | Text dim | `#7E8AB5` | Slate | Eyebrows, captions |
 
-The three aurora colors form the signature gradient **Teal → Violet → Amber** (used
-left-to-right / top-to-bottom). Always use all three together in the mark; a single
-one may be used for a small accent.
+The crescent runs **navy → blue → violet** (`#141A4D` → `#3B49C9` → `#8B7CF6`); the
+sparkles are **gold** (`#F5C86B` / `#FFE6A8`) with the central star fading **white →
+violet**. The aurora trio **Teal → Violet → Amber** remains the general UI accent ramp
+(links, highlights, badges); a single one may be used for a small accent.
 
 ## Typography
 

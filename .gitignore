@@ -21,3 +21,8 @@ build-*/
 
 # Qoder chat workspace marker
 .aicoding-chat-workspace
+
+# brand generator scratch frames
+assets/frames/
+docs/brand/assets/frames/
+docs/brand/assets/hero_frames/
