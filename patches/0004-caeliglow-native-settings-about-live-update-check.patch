@@ -1,0 +1,797 @@
+From d0f1fea45a2259f22fc1655729cc83979e341785 Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Sun, 18 Oct 2026 14:00:44 +0500
+Subject: [PATCH] caeliglow: native Settings About section with live GitHub
+ update check
+
+Adds a CaeliGlow-branded About page to the Settings window showing the
+CaeliGlow version, the Noctalia base version and MIT attribution, plus a
+live "Check for updates" button. The button uses Noctalia existing async
+HttpClient to query the mockifylab/CaeliGlow GitHub releases endpoint and
+reports the result through the tested semver comparison model. Gated by
+shell.offlineMode; release notes are displayed as text and never executed.
+---
+ assets/translations/en.json                   |   1 +
+ meson.build                                   |   2 +
+ src/app/application_ui.cpp                    |   1 +
+ src/caeliglow/meta.hpp                        |  34 +++
+ src/caeliglow/update_model.hpp                | 199 ++++++++++++++++++
+ src/caeliglow/version.hpp                     | 151 +++++++++++++
+ src/shell/settings/settings_content.cpp       |   7 +-
+ src/shell/settings/settings_content_about.cpp | 144 +++++++++++++
+ src/shell/settings/settings_content_about.h   |  30 +++
+ src/shell/settings/settings_registry.cpp      |   3 +-
+ src/shell/settings/settings_registry.h        |   1 +
+ src/shell/settings/settings_window.h          |   9 +
+ src/shell/settings/settings_window_scene.cpp  |  21 ++
+ 13 files changed, 599 insertions(+), 4 deletions(-)
+ create mode 100644 src/caeliglow/meta.hpp
+ create mode 100644 src/caeliglow/update_model.hpp
+ create mode 100644 src/caeliglow/version.hpp
+ create mode 100644 src/shell/settings/settings_content_about.cpp
+ create mode 100644 src/shell/settings/settings_content_about.h
+
+diff --git a/assets/translations/en.json b/assets/translations/en.json
+index b9de2dbfb..12ba4a13d 100644
+--- a/assets/translations/en.json
++++ b/assets/translations/en.json
+@@ -1419,6 +1419,7 @@
+         "window-switcher": "Window Switcher"
+       },
+       "sections": {
++        "about": "CaeliGlow",
+         "accessibility": "Accessibility",
+         "appearance": "Appearance",
+         "backdrop": "Backdrop",
+diff --git a/meson.build b/meson.build
+index ad6973b98..0188f697b 100644
+--- a/meson.build
++++ b/meson.build
+@@ -721,6 +721,7 @@ _noctalia_sources = files(
+   'src/shell/settings/color_spec_picker.cpp',
+   'src/shell/settings/config_export_dialog_modal.cpp',
+   'src/shell/settings/settings_content.cpp',
++  'src/shell/settings/settings_content_about.cpp',
+   'src/shell/settings/settings_content_common.cpp',
+   'src/shell/settings/settings_content_plugins.cpp',
+   'src/shell/settings/path_browse.cpp',
+@@ -1109,6 +1110,7 @@ _noctalia_compile_definitions = [
+   '-DNOCTALIA_INSTALL_PREFIX="' + get_option('prefix') + '"',
+   '-DNOCTALIA_INSTALL_DATADIR="' + get_option('datadir') + '"',
+   '-DNOCTALIA_VERSION="' + meson.project_version() + '"',
++  '-DCAELIGLOW_VERSION="1.0.0"',
+ ] + jemalloc_cpp_args
+ 
+ _noctalia_cpp_args = [
+diff --git a/src/app/application_ui.cpp b/src/app/application_ui.cpp
+index c13be23f8..6b016d96a 100644
+--- a/src/app/application_ui.cpp
++++ b/src/app/application_ui.cpp
+@@ -148,6 +148,7 @@ void Application::initUiRenderSurfacesAndSettings() {
+       &m_compositorPlatform, m_accountsService.get()
+   );
+   m_settingsWindow.setPluginManager(&m_pluginManager);
++  m_settingsWindow.setHttpClient(&m_httpClient);  // CaeliGlow: About-section update check
+   m_settingsWindow.setPluginRecommendations(&m_pluginRecommendations);
+   m_settingsWindow.setIpcService(&m_ipcService);
+   m_settingsWindow.setAsyncTextureCache(&m_asyncTextureCache);
+diff --git a/src/caeliglow/meta.hpp b/src/caeliglow/meta.hpp
+new file mode 100644
+index 000000000..21baecdb1
+--- /dev/null
++++ b/src/caeliglow/meta.hpp
+@@ -0,0 +1,34 @@
++// CaeliGlow — identity + update-endpoint constants.
++//
++// The canonical CaeliGlow version is baked in at configure time via the
++// meson compile definition CAELIGLOW_VERSION (see meson.build); version.hpp
++// reads it into caeliglow::kCaeliGlowVersion. The base Noctalia release this
++// build is patched from is already exposed by Noctalia as NOCTALIA_VERSION.
++//
++// Update checks are a single unauthenticated GET to GitHub's public releases
++// endpoint for this repository — no auth, no config, no machine identifiers —
++// and the response is treated strictly as data (see update_model.hpp).
++#pragma once
++
++#include <string>
++#include <string_view>
++
++namespace caeliglow {
++
++  // Repository coordinates for the update check.
++  inline constexpr std::string_view kRepoOwner = "mockifylab";
++  inline constexpr std::string_view kRepoName = "CaeliGlow";
++
++  // GitHub public releases endpoint for the CaeliGlow repository.
++  inline const std::string& releasesUrl() {
++    static const std::string url = "https://api.github.com/repos/mockifylab/CaeliGlow/releases";
++    return url;
++  }
++
++  // Base Noctalia release this CaeliGlow build is derived from (patch series pinned to it).
++#ifndef NOCTALIA_VERSION
++#define NOCTALIA_VERSION "unknown"
++#endif
++  inline constexpr std::string_view kNoctaliaBaseVersion = NOCTALIA_VERSION;
++
++}  // namespace caeliglow
+diff --git a/src/caeliglow/update_model.hpp b/src/caeliglow/update_model.hpp
+new file mode 100644
+index 000000000..83af21303
+--- /dev/null
++++ b/src/caeliglow/update_model.hpp
+@@ -0,0 +1,199 @@
++// CaeliGlow - update checker model (feature #5).
++//
++// The transport layer (HTTP fetch) lives in the native Settings integration and
++// in build tooling; this header contains only the pure, testable decision logic
++// so it can be unit tested with mocked responses for: current version, newer
++// version, network failure, rate limit, malformed data, and missing notes.
++//
++// Privacy/safety guarantees enforced by design here and in callers:
++//   * The request is a GET to GitHub's public releases endpoint with NO
++//     authentication, NO user config, NO machine identifiers.
++//   * Release notes are treated strictly as text. They are never parsed as
++//     HTML/Markdown-as-code and never executed. Installation is never implicit:
++//     evaluate() only reports state; a separate, explicit user action runs the
++//     update script, which itself backs up and validates before touching files.
++#pragma once
++
++#include <string>
++#include <vector>
++
++#include <nlohmann/json.hpp>
++
++#include "version.hpp"
++
++namespace caeliglow {
++
++// The states the About/update UI can display.
++enum class UpdateState {
++  Checking,         // request in flight
++  UpToDate,         // installed is the newest known release
++  UpdateAvailable,  // a newer release exists
++  NoReleases,       // repository reachable but has no releases yet
++  Offline,          // network failure / timeout / no connectivity
++  RateLimited,      // GitHub API rate limit (HTTP 403/429)
++  Error,            // malformed or otherwise unusable response
++};
++
++// A minimal view of one GitHub release record.
++struct ReleaseInfo {
++  std::string tag;      // e.g. "v1.2.0"
++  std::string name;     // human title, may be empty
++  std::string notes;    // body, may be empty
++  bool prerelease = false;
++};
++
++// A release with its parsed semantic version, used for ordering.
++struct ParsedRelease {
++  ReleaseInfo info;
++  Semver version;
++};
++
++struct UpdateResult {
++  UpdateState state = UpdateState::Checking;
++  std::string installedVersion;
++  std::string latestVersion;  // tag of newest release when UpdateAvailable
++  std::string notes;          // release notes when UpdateAvailable
++  std::string message;        // human-readable summary for the UI
++};
++
++inline const char* toString(UpdateState s) {
++  switch (s) {
++    case UpdateState::Checking: return "checking";
++    case UpdateState::UpToDate: return "up-to-date";
++    case UpdateState::UpdateAvailable: return "update-available";
++    case UpdateState::NoReleases: return "no-releases";
++    case UpdateState::Offline: return "offline";
++    case UpdateState::RateLimited: return "rate-limited";
++    case UpdateState::Error: return "error";
++  }
++  return "unknown";
++}
++
++// Parse a GitHub "/releases" JSON array into release records. Tolerant of
++// missing fields; a non-array or structurally broken body yields an empty
++// vector and lets the caller distinguish NoReleases from Error via jsonOk.
++inline std::vector<ReleaseInfo> parseReleases(const std::string& body, bool& jsonOk) {
++  jsonOk = false;
++  std::vector<ReleaseInfo> out;
++
++  nlohmann::json root;
++  try {
++    root = nlohmann::json::parse(body);
++  } catch (const nlohmann::json::exception&) {
++    return out;  // malformed JSON
++  }
++  if (!root.is_array()) {
++    return out;  // unexpected shape
++  }
++  jsonOk = true;
++
++  for (const auto& item : root) {
++    if (!item.is_object()) {
++      continue;
++    }
++    ReleaseInfo r;
++    if (item.contains("tag_name") && item["tag_name"].is_string()) {
++      r.tag = item["tag_name"].get<std::string>();
++    }
++    if (item.contains("name") && item["name"].is_string()) {
++      r.name = item["name"].get<std::string>();
++    }
++    if (item.contains("body") && item["body"].is_string()) {
++      r.notes = item["body"].get<std::string>();
++    }
++    if (item.contains("prerelease") && item["prerelease"].is_boolean()) {
++      r.prerelease = item["prerelease"].get<bool>();
++    }
++    if (!r.tag.empty()) {
++      out.push_back(std::move(r));
++    }
++  }
++  return out;
++}
++
++// Return the highest-versioned, non-prerelease release that parses as semver.
++// Prereleases are ignored unless the installed version is itself a prerelease,
++// matching a conservative "stable channel" policy.
++inline std::optional<ParsedRelease> selectLatest(const std::vector<ReleaseInfo>& releases,
++                                                 const Semver& installed) {
++  std::optional<ParsedRelease> best;
++  bool allowPre = installed.prerelease();
++  for (const auto& r : releases) {
++    if (r.prerelease && !allowPre) {
++      continue;
++    }
++    auto v = parseVersion(r.tag);
++    if (!v) {
++      continue;
++    }
++    if (!best || compareVersion(*v, best->version) > 0) {
++      best = ParsedRelease{.info = r, .version = *v};
++    }
++  }
++  return best;
++}
++
++// Decide the UI state from an HTTP status code + body and the installed version.
++// status == 0 signals a transport failure (offline/timeout).
++inline UpdateResult evaluate(const std::string& installedVersion, int status, const std::string& body) {
++  UpdateResult res;
++  res.installedVersion = installedVersion;
++
++  auto installed = parseVersion(installedVersion);
++  if (!installed) {
++    // Unknown/invalid local version: do not compare, surface as error.
++    res.state = UpdateState::Error;
++    res.message = "Could not determine the installed CaeliGlow version.";
++    return res;
++  }
++
++  if (status == 0) {
++    res.state = UpdateState::Offline;
++    res.message = "Unable to reach GitHub. Check your network connection and try again.";
++    return res;
++  }
++  if (status == 403 || status == 429) {
++    res.state = UpdateState::RateLimited;
++    res.message = "GitHub is rate-limiting update checks right now. Try again in a few minutes.";
++    return res;
++  }
++  if (status < 200 || status >= 300) {
++    res.state = UpdateState::Error;
++    res.message = "The update check failed (HTTP " + std::to_string(status) + ").";
++    return res;
++  }
++
++  bool jsonOk = false;
++  auto releases = parseReleases(body, jsonOk);
++  if (!jsonOk) {
++    res.state = UpdateState::Error;
++    res.message = "The update server returned an unexpected response.";
++    return res;
++  }
++  if (releases.empty()) {
++    res.state = UpdateState::NoReleases;
++    res.message = "No CaeliGlow releases have been published yet.";
++    return res;
++  }
++
++  auto latest = selectLatest(releases, *installed);
++  if (!latest) {
++    res.state = UpdateState::NoReleases;
++    res.message = "No stable CaeliGlow release is available yet.";
++    return res;
++  }
++
++  res.latestVersion = latest->info.tag;
++  if (compareVersion(latest->version, *installed) > 0) {
++    res.state = UpdateState::UpdateAvailable;
++    res.notes = latest->info.notes;  // rendered as plain text by the UI
++    std::string title = latest->info.name.empty() ? latest->info.tag : latest->info.name;
++    res.message = "CaeliGlow " + title + " is available.";
++  } else {
++    res.state = UpdateState::UpToDate;
++    res.message = "You\u2019re using the latest CaeliGlow release.";
++  }
++  return res;
++}
++
++}  // namespace caeliglow
+diff --git a/src/caeliglow/version.hpp b/src/caeliglow/version.hpp
+new file mode 100644
+index 000000000..2350dab1d
+--- /dev/null
++++ b/src/caeliglow/version.hpp
+@@ -0,0 +1,151 @@
++// CaeliGlow - canonical version and semantic version comparison.
++//
++// This is dependency-light (C++23 std only) so it can be unit tested in
++// isolation and reused by both the native Settings "About" section and the
++// build/release tooling. The single canonical version string lives in the
++// repository's VERSION file; it is baked in at configure time (see meson /
++// build scripts) and exposed through kCaeliGlowVersion below. No other place
++// in the app hard-codes a version string.
++#pragma once
++
++#include <cstdint>
++#include <optional>
++#include <string>
++#include <string_view>
++#include <vector>
++
++namespace caeliglow {
++
++// Baked-in canonical version. The build defines CAELIGLOW_VERSION from the
++// VERSION file; this provides a safe fallback so headers remain usable in
++// contexts (e.g. unit tests) that do not define the macro.
++#ifndef CAELIGLOW_VERSION
++#define CAELIGLOW_VERSION "0.0.0"
++#endif
++
++inline constexpr std::string_view kCaeliGlowVersion = CAELIGLOW_VERSION;
++
++// A parsed semantic version. Supports an optional "v" prefix and an optional
++// pre-release suffix (e.g. "1.2.3-rc.1"). Only numeric major/minor/patch are
++// used for ordering; pre-release presence makes a version sort before its
++// release counterpart (1.0.0-rc.1 < 1.0.0).
++struct Semver {
++  std::int64_t major = 0;
++  std::int64_t minor = 0;
++  std::int64_t patch = 0;
++  std::string pre;  // empty when absent
++
++  bool prerelease() const { return !pre.empty(); }
++};
++
++// Parse a version string such as "v1.2.3", "1.2", "1.2.3-rc.1". Leading "v"
++// and surrounding whitespace are tolerated. Returns nullopt on malformed input.
++inline std::optional<Semver> parseVersion(std::string_view raw) {
++  auto trim = [](std::string_view s) {
++    std::size_t b = s.find_first_not_of(" \t\r\n");
++    if (b == std::string_view::npos) {
++      return std::string_view{};
++    }
++    std::size_t e = s.find_last_not_of(" \t\r\n");
++    return s.substr(b, e - b + 1);
++  };
++
++  std::string_view s = trim(raw);
++  if (!s.empty() && (s.front() == 'v' || s.front() == 'V')) {
++    s.remove_prefix(1);
++  }
++  if (s.empty()) {
++    return std::nullopt;
++  }
++
++  Semver out;
++  // Split off a pre-release / build suffix at the first '-' or '+'.
++  std::size_t sep = s.find_first_of("-+");
++  std::string_view core = (sep == std::string_view::npos) ? s : s.substr(0, sep);
++  if (sep != std::string_view::npos) {
++    out.pre = std::string(s.substr(sep));
++    // A '+' build suffix is not part of precedence ordering; drop it.
++    if (auto plus = out.pre.find('+'); plus != std::string::npos) {
++      out.pre = out.pre.substr(0, plus);
++    }
++    if (out.pre.size() > 1 && out.pre.front() == '-') {
++      out.pre.erase(out.pre.begin());  // strip leading '-'
++    }
++  }
++
++  std::vector<std::string_view> parts;
++  std::size_t pos = 0;
++  while (true) {
++    std::size_t dot = core.find('.', pos);
++    parts.push_back(core.substr(pos, dot == std::string_view::npos ? std::string_view::npos : dot - pos));
++    if (dot == std::string_view::npos) {
++      break;
++    }
++    pos = dot + 1;
++  }
++  if (parts.empty() || parts.size() > 3) {
++    return std::nullopt;
++  }
++
++  auto number = [](std::string_view tok, std::int64_t& into) {
++    if (tok.empty()) {
++      return false;
++    }
++    std::int64_t acc = 0;
++    for (char c : tok) {
++      if (c < '0' || c > '9') {
++        return false;
++      }
++      acc = acc * 10 + (c - '0');
++    }
++    into = acc;
++    return true;
++  };
++
++  if (!number(parts[0], out.major)) {
++    return std::nullopt;
++  }
++  if (parts.size() > 1 && !number(parts[1], out.minor)) {
++    return std::nullopt;
++  }
++  if (parts.size() > 2 && !number(parts[2], out.patch)) {
++    return std::nullopt;
++  }
++  return out;
++}
++
++// Three-way compare: negative if a<b, 0 if equal, positive if a>b.
++// Pre-release ordering follows the common semver rule: a version with a
++// pre-release sorts before the same version without one.
++inline int compareVersion(const Semver& a, const Semver& b) {
++  if (a.major != b.major) {
++    return a.major < b.major ? -1 : 1;
++  }
++  if (a.minor != b.minor) {
++    return a.minor < b.minor ? -1 : 1;
++  }
++  if (a.patch != b.patch) {
++    return a.patch < b.patch ? -1 : 1;
++  }
++  if (a.pre == b.pre) {
++    return 0;
++  }
++  if (a.pre.empty()) {
++    return 1;  // release > prerelease
++  }
++  if (b.pre.empty()) {
++    return -1;
++  }
++  return a.pre < b.pre ? -1 : 1;
++}
++
++inline std::optional<int> compareVersion(std::string_view a, std::string_view b) {
++  auto pa = parseVersion(a);
++  auto pb = parseVersion(b);
++  if (!pa || !pb) {
++    return std::nullopt;
++  }
++  return compareVersion(*pa, *pb);
++}
++
++}  // namespace caeliglow
+diff --git a/src/shell/settings/settings_content.cpp b/src/shell/settings/settings_content.cpp
+index 8cf059114..1e771c841 100644
+--- a/src/shell/settings/settings_content.cpp
++++ b/src/shell/settings/settings_content.cpp
+@@ -1463,9 +1463,10 @@ namespace settings {
+       }
+     }
+ 
+-    // The Plugins section has no registry entries — it renders fully custom
+-    // content (addSettingsPlugins), so suppress the "no settings found" state.
+-    if (visibleEntries == 0 && ctx.selectedSection != "plugins") {
++    // The Plugins and CaeliGlow About sections have no registry entries — they render fully
++    // custom content (addSettingsPlugins / addSettingsCaeliGlowAbout), so suppress the
++    // "no settings found" state for them.
++    if (visibleEntries == 0 && ctx.selectedSection != "plugins" && ctx.selectedSection != "about") {
+       auto emptyState = ui::column(
+           {.align = FlexAlign::Center,
+            .justify = FlexJustify::Center,
+diff --git a/src/shell/settings/settings_content_about.cpp b/src/shell/settings/settings_content_about.cpp
+new file mode 100644
+index 000000000..278a36799
+--- /dev/null
++++ b/src/shell/settings/settings_content_about.cpp
+@@ -0,0 +1,144 @@
++// CaeliGlow — native Settings "About" section + live update check.
++//
++// The section shows the baked-in CaeliGlow version, the base Noctalia release, and
++// license/attribution, plus a "Check for updates" button. The button issues a single
++// unauthenticated GET to GitHub's public releases endpoint (via Noctalia's own async
++// HttpClient, whose callback is guaranteed to run on the main loop) and renders the
++// result with the already-unit-tested decision logic in caeliglow/update_model.hpp.
++// Release notes are never fetched/executed; only a short plain-text status is shown.
++#include "shell/settings/settings_content_about.h"
++
++#include "caeliglow/meta.hpp"
++#include "caeliglow/update_model.hpp"
++#include "caeliglow/version.hpp"
++#include "config/config_service.h"
++#include "net/http_client.h"
++#include "shell/settings/settings_content_common.h"
++#include "shell/settings/settings_window.h"
++#include "ui/builders.h"
++#include "ui/controls/flex.h"
++#include "ui/palette.h"
++#include "ui/style.h"
++
++#include <memory>
++#include <string>
++
++namespace settings {
++  namespace {
++    std::unique_ptr<Label>
++    label(std::string_view text, float size, ColorRole role, FontWeight weight = FontWeight::Normal) {
++      return makeLabel(text, size, colorSpecFromRole(role), weight);
++    }
++  } // namespace
++
++  void addSettingsCaeliGlowAbout(Flex& content, SettingsAboutContext ctx) {
++    if (ctx.selectedSection != "about") {
++      return;
++    }
++    const float scale = ctx.scale;
++
++    auto sectionCol = ui::column({
++        .align = FlexAlign::Stretch,
++        .gap = Style::spaceSm * scale,
++        .padding = Style::spaceLg * scale,
++        .fill = clearColorSpec(),
++        .fillWidth = true,
++    });
++    Flex* section = sectionCol.get();
++    content.addChild(std::move(sectionCol));
++
++    auto titleRow = ui::row(
++        {.align = FlexAlign::Center, .gap = Style::spaceSm * scale, .fillWidth = true},
++        ui::glyph({
++            .glyph = "info-circle",
++            .glyphSize = Style::fontSizeHeader * scale,
++            .color = colorSpecFromRole(ColorRole::Primary),
++        }),
++        label("CaeliGlow", Style::fontSizeHeader * scale, ColorRole::Primary, FontWeight::Bold)
++    );
++    if (ctx.pageTitleRow != nullptr && ctx.pageTitleRow->children().empty()) {
++      ctx.pageTitleRow->addChild(std::move(titleRow));
++    } else {
++      section->addChild(std::move(titleRow));
++    }
++
++    // Identity block.
++    section->addChild(label("Version " + ctx.installedVersion, Style::fontSizeBody * scale, ColorRole::OnSurface));
++    section->addChild(label(
++        "Built on Noctalia " + ctx.noctaliaBaseVersion, Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
++    ));
++    section->addChild(label(
++        "Independent project, MIT licensed. Noctalia (MIT) attribution preserved; "
++        "no Caelestia code or assets used.",
++        Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
++    ));
++
++    section->addChild(ui::separator({}));
++
++    // Update check.
++    const bool canCheck = !ctx.offlineMode && !ctx.updateInFlight && static_cast<bool>(ctx.onCheckForUpdates);
++    section->addChild(
++        ui::button({
++            .text = ctx.updateInFlight ? std::string("Checking\u2026") : std::string("Check for updates"),
++            .enabled = canCheck,
++            .variant = ButtonVariant::Primary,
++            .radius = Style::scaledRadiusMd(scale),
++            .onClick = ctx.onCheckForUpdates,
++        })
++    );
++
++    if (ctx.offlineMode) {
++      section->addChild(label(
++          "Update checks are disabled while offline mode is on.", Style::fontSizeCaption * scale,
++          ColorRole::OnSurfaceVariant
++      ));
++    } else if (!ctx.updateStatusText.empty()) {
++      section->addChild(label(
++          ctx.updateStatusText, Style::fontSizeBody * scale,
++          ctx.updateIsError ? ColorRole::Error : ColorRole::Secondary
++      ));
++    } else {
++      section->addChild(label(
++          "Checks GitHub for the newest stable CaeliGlow release. Installing an update is always "
++          "a separate, explicit step \u2014 this never changes anything on its own.",
++          Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
++      ));
++    }
++  }
++
++} // namespace settings
++
++// ── SettingsWindow::checkForUpdates ────────────────────────────────────────────
++// Runs the unauthenticated release check and reflects the result into the About
++// section. Safe on lifetime grounds: SettingsWindow is a long-lived Application
++// member (close() only hides the surface), and HttpClient delivers its callback on
++// a later main-loop iteration, never reentrantly from this call.
++void SettingsWindow::checkForUpdates() {
++  if (m_httpClient == nullptr || m_aboutUpdateInFlight) {
++    return;
++  }
++  if (m_config != nullptr && m_config->config().shell.offlineMode) {
++    return; // offline mode: the About section already explains why the button is disabled
++  }
++
++  m_aboutUpdateInFlight = true;
++  m_aboutStatusText.clear();
++  m_aboutUpdateError = false;
++  requestContentRebuild();
++
++  HttpRequest req;
++  req.method = "GET";
++  req.url = caeliglow::releasesUrl();
++  req.headers = {"User-Agent: CaeliGlow", "Accept: application/vnd.github+json"};
++
++  m_httpClient->request(std::move(req), [this](HttpResponse resp) {
++    m_aboutUpdateInFlight = false;
++    const int status = resp.transportOk ? static_cast<int>(resp.status) : 0;
++    const auto result = caeliglow::evaluate(std::string(caeliglow::kCaeliGlowVersion), status, resp.body);
++    m_aboutStatusText = result.message;
++    m_aboutUpdateError =
++        result.state == caeliglow::UpdateState::Error || result.state == caeliglow::UpdateState::Offline ||
++        result.state == caeliglow::UpdateState::RateLimited;
++    requestContentRebuild();
++  });
++}
+diff --git a/src/shell/settings/settings_content_about.h b/src/shell/settings/settings_content_about.h
+new file mode 100644
+index 000000000..5e73b50af
+--- /dev/null
++++ b/src/shell/settings/settings_content_about.h
+@@ -0,0 +1,30 @@
++#pragma once
++
++#include <functional>
++#include <string>
++#include <string_view>
++
++class Flex;
++
++namespace settings {
++
++  // Data + actions for the CaeliGlow "About" section. Fully custom content (no registry
++  // entries), mirroring how the Plugins section is mounted. All strings are owned copies so
++  // a debounced rebuild never views a string mid mutation.
++  struct SettingsAboutContext {
++    float scale = 1.0F;
++    std::string_view selectedSection;
++    bool offlineMode = false;
++    std::string installedVersion;     // CaeliGlow version baked into this build
++    std::string noctaliaBaseVersion;  // base Noctalia release the patch series is pinned to
++    std::string updateStatusText;     // last update-check result; empty until the first check
++    bool updateInFlight = false;
++    bool updateIsError = false;       // render updateStatusText in the error color
++    Flex* pageTitleRow = nullptr;
++    std::function<void()> onCheckForUpdates;
++  };
++
++  // Render the About section into `content` when ctx.selectedSection == "about".
++  void addSettingsCaeliGlowAbout(Flex& content, SettingsAboutContext ctx);
++
++} // namespace settings
+diff --git a/src/shell/settings/settings_registry.cpp b/src/shell/settings/settings_registry.cpp
+index 9fb583e16..a6219424d 100644
+--- a/src/shell/settings/settings_registry.cpp
++++ b/src/shell/settings/settings_registry.cpp
+@@ -86,7 +86,7 @@ namespace settings {
+       return defaultKeybindSet(action);
+     }
+ 
+-    constexpr std::array<SettingsSectionDescriptor, 24> kSettingsSections{{
++    constexpr std::array<SettingsSectionDescriptor, 25> kSettingsSections{{
+         {SettingsSection::Appearance, "appearance", "adjustments-horizontal"},
+         {SettingsSection::Wallpaper, "wallpaper", "paint"},
+         {SettingsSection::Templates, "templates", "color-swatch"},
+@@ -111,6 +111,7 @@ namespace settings {
+         {SettingsSection::Umbriel, "umbriel", "umbriel"},
+         {SettingsSection::Bar, "bar", "crop-3-2", false},
+         {SettingsSection::Plugins, "plugins", "puzzle", true, true},
++        {SettingsSection::About, "about", "info-circle", true, true},
+     }};
+ 
+     const SettingsSectionDescriptor& descriptorFor(SettingsSection section) {
+diff --git a/src/shell/settings/settings_registry.h b/src/shell/settings/settings_registry.h
+index 38e73d720..1f8b9261d 100644
+--- a/src/shell/settings/settings_registry.h
++++ b/src/shell/settings/settings_registry.h
+@@ -48,6 +48,7 @@ namespace settings {
+     Umbriel,
+     Bar,
+     Plugins,
++    About,  // CaeliGlow: native About + update-check section
+   };
+ 
+   struct SettingsSectionDescriptor {
+diff --git a/src/shell/settings/settings_window.h b/src/shell/settings/settings_window.h
+index fc4743552..64bf2e492 100644
+--- a/src/shell/settings/settings_window.h
++++ b/src/shell/settings/settings_window.h
+@@ -44,6 +44,7 @@ class DependencyService;
+ class FileDialogPresenter;
+ class Flex;
+ class GlyphPickerDialogPresenter;
++class HttpClient;
+ class IdleManager;
+ class Input;
+ class Label;
+@@ -129,6 +130,10 @@ public:
+   // Source for the bar widget gesture action picker.
+   void setIpcService(IpcService* service) { m_ipcService = service; }
+   void setClipboardService(ClipboardService* service) { m_clipboardService = service; }
++  // CaeliGlow: backs the About section's live update check (unauthenticated GitHub GET).
++  void setHttpClient(HttpClient* http) { m_httpClient = http; }
++  // CaeliGlow: run the update check and reflect the result into the About section.
++  void checkForUpdates();
+   // Backs plugin-store thumbnails; trimmed when the window closes.
+   void setAsyncTextureCache(AsyncTextureCache* cache) { m_asyncTextures = cache; }
+   void initializeDialogPresenter(
+@@ -271,6 +276,10 @@ private:
+   AccountsService* m_accounts = nullptr;
+   CalendarService* m_calendarService = nullptr;
+   ClipboardService* m_clipboardService = nullptr;
++  HttpClient* m_httpClient = nullptr; // CaeliGlow: About-section update check
++  std::string m_aboutStatusText;      // CaeliGlow: last update-check result shown in About
++  bool m_aboutUpdateInFlight = false;
++  bool m_aboutUpdateError = false;
+   std::unordered_map<std::string, std::uint32_t> m_templateColors;
+   std::string m_templateColorMode;
+   std::shared_ptr<settings::PaletteInspectorContent> m_paletteInspectorContent;
+diff --git a/src/shell/settings/settings_window_scene.cpp b/src/shell/settings/settings_window_scene.cpp
+index 72b299712..d6a7c3b58 100644
+--- a/src/shell/settings/settings_window_scene.cpp
++++ b/src/shell/settings/settings_window_scene.cpp
+@@ -1,4 +1,6 @@
+ #include "calendar/calendar_service.h"
++#include "caeliglow/meta.hpp"
++#include "caeliglow/version.hpp"
+ #include "compositors/compositor_detect.h"
+ #include "compositors/compositor_platform.h"
+ #include "config/config_service.h"
+@@ -21,6 +23,7 @@
+ #include "shell/settings/font_family_catalog.h"
+ #include "shell/settings/settings_bar_management.h"
+ #include "shell/settings/settings_content.h"
++#include "shell/settings/settings_content_about.h"
+ #include "shell/settings/settings_content_common.h"
+ #include "shell/settings/settings_content_plugins.h"
+ #include "shell/settings/settings_sidebar.h"
+@@ -1205,6 +1208,24 @@ void SettingsWindow::rebuildSettingsContent() {
+     );
+   }
+ 
++  if (m_selectedSection == "about") {
++    settings::addSettingsCaeliGlowAbout(
++        *m_contentContainer,
++        settings::SettingsAboutContext{
++            .scale = scale,
++            .selectedSection = m_selectedSection,
++            .offlineMode = cfg.shell.offlineMode,
++            .installedVersion = std::string(caeliglow::kCaeliGlowVersion),
++            .noctaliaBaseVersion = std::string(caeliglow::kNoctaliaBaseVersion),
++            .updateStatusText = m_aboutStatusText,
++            .updateInFlight = m_aboutUpdateInFlight,
++            .updateIsError = m_aboutUpdateError,
++            .pageTitleRow = m_pageTitleRow,
++            .onCheckForUpdates = [this]() { checkForUpdates(); },
++        }
++    );
++  }
++
+   if (m_pageTitleRow != nullptr) {
+     const bool hasPageTitle = !m_pageTitleRow->children().empty();
+     m_pageTitleRow->setVisible(hasPageTitle);
+-- 
+2.56.0
+

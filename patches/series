@@ -2,3 +2,5 @@
 # Regenerate any of these with: (cd upstream/noctalia && git format-patch -1 -o ../../patches --start-number N)
 0001-caeliglow-bar-hover-add-Caelestia-style-scale-pop-on.patch
 0002-caeliglow-bottom-edge-launcher-reveal-via-HotCorners.patch
+0003-caeliglow-right-edge-power-trigger-hide-original-pow.patch
+0004-caeliglow-native-settings-about-live-update-check.patch

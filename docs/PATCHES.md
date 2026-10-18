@@ -66,25 +66,67 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
   `config_validate_cli`, `config_widget`, `config_override_mutation` all pass: 6/6).
   Not desktop-tested here (second-shell launch avoided over the live session).
 
-## Planned — Right-edge power controls (+ remove duplicate power entry)
-- **Approach:** a right-edge vertically-mounted layer surface using Noctalia's own
-  controls (`ui::button`, tooltips, `Style`/`Palette`) with hover/focus labels and a
-  confirmation step for destructive actions, wired to `SessionActionRunner`
-  (`src/shell/session/`) and logind — no hard-coded paths. Then hide the original
-  power entry in the control center once verified.
-- **Status:** not yet implemented.
+## 0003 — Right-edge power controls (+ hide the original power entries)
+- **Files:** `src/shell/hot_corners/hot_corners.{h,cpp}`,
+  `src/config/config_types.h`, `src/config/schema/config_schema.cpp`,
+  `src/app/application_services.cpp`
+- **What:** adds an optional thin, full-height trigger strip along the **right edge**
+  (mirrors the 0002 bottom-edge mechanism, reusing the same dwell/enter/leave arming as
+  position `5`). A new shell action `"power"` opens Noctalia's **own SessionPanel**
+  (`m_panelManager.togglePanel("session")`) — which already renders labeled action
+  buttons and a **confirm countdown** for destructive actions and resolves every command
+  through `SessionActionRunner`/logind (no hard-coded paths). By reusing the shipped
+  SessionPanel we get hover labels + confirmation for free and add zero new UI surface.
+- **Remove the original power entries:** the compiled-in defaults for
+  `control_center.show_session_button` and `shell.launcher.show_session_button` are
+  flipped to `false`, so the old header/toolbar power buttons are gone in a CaeliGlow
+  build. They stay fully **restorable** in Settings (toggle them back on).
+- **Config (opt-in, off by default so ordinary Noctalia is unchanged):**
+  ```toml
+  [hot_corners]
+  enabled = true
+  delay_ms = 120
+  right_edge_width = 0        # 0 = auto (12 px thick)
+  [hot_corners.right_edge]
+  action = "power"
+  ```
+- **Correctness:** anchored Top+Bottom+Right so the compositor stretches the strip to the
+  full output height per-output — correct across multi-monitor and fractional scaling.
+  New config fields participate in `operator==`, so edits trigger a `hotCorners` reload
+  and rebuild the surfaces.
+- **Independent re-implementation:** behavior modeled on Caelestia's edge power strip,
+  built from scratch on Noctalia's own subsystems; no Caelestia GPL code/assets.
+- **Status:** **compiled** (full incremental rebuild + link, 210 targets) and
+  **regression-tested** (`meson test` suite: **153/153 OK, 0 fail**, incl.
+  `config_schema_roundtrip`, `config_validate_cli`, `config_override_mutation`).
+  Series 0001→0002→0003 verified to apply cleanly onto a pristine v5.3.0 via
+  `git am --3way`. Not desktop-tested here (a second shell over the live Hyprland
+  session was intentionally avoided).
 
-## Planned — Native Settings "CaeliGlow About" + update checker
-- **Reusable, already verified piece:** `src/caeliglow/update_model.hpp` +
-  `src/caeliglow/version.hpp` implement canonical-version reading and the full
-  update decision state machine (checking / up-to-date / update-available /
-  no-releases / offline / rate-limited / error), with tolerant JSON handling and a
-  conservative stable-release channel. These compile and pass their unit tests
-  standalone (see `tests/test_update_model.cpp`).
-- **Remaining work:** wire these into the native Settings GUI (`src/shell/settings/`)
-  as a "CaeliGlow" section and call GitHub's public releases endpoint via Noctalia's
-  existing HTTP stack, rendering release notes as plain text only.
-- **Status:** logic implemented + **unit-tested**; Settings UI integration pending.
+## 0004 — Native Settings "CaeliGlow About" + live update checker
+- **What:** a new native Settings section (id `about`, glyph `info-circle`, label
+  "CaeliGlow") added to Noctalia's Settings window. It shows the CaeliGlow version
+  (`-DCAELIGLOW_VERSION`), the Noctalia base version (`-DNOCTALIA_VERSION`) and MIT
+  attribution, plus a **live "Check for updates" button**.
+- **How it works:** the button calls `SettingsWindow::checkForUpdates()`, which uses
+  Noctalia's existing async `HttpClient` (owned by `Application`, injected via
+  `setHttpClient`) to `GET` the `mockifylab/CaeliGlow` GitHub releases endpoint. The
+  response is fed to the already unit-tested `caeliglow::update_model::evaluate()`
+  semver state machine; the result is rendered back through a content rebuild.
+- **Safety:** gated by `shell.offlineMode` (no network when enabled); non-2xx / 403 /
+  429 / transport failures map to error/rate-limited/offline states; release notes are
+  shown as **plain text and never executed**; the callback runs on the main loop and
+  `SettingsWindow` is a long-lived `Application` member (lifetime-safe `this` capture).
+- **Files:** `src/caeliglow/{version,update_model,meta}.hpp` (vendored + new meta),
+  `src/shell/settings/settings_content_about.{h,cpp}` (new), plus registration edits
+  in `settings_registry.{h,cpp}` (section 24→25), `settings_window.h`,
+  `settings_window_scene.cpp`, `settings_content.cpp`, `application_ui.cpp`,
+  `meson.build`, `assets/translations/en.json`.
+- **Status:** **compiled** (full incremental rebuild + link of all 152 targets, new
+  `settings_content_about.cpp.o` in `libnoctalia_core.a`) and **regression-tested**
+  (`meson test`: **153/153 OK, 0 fail**). Series 0001→0002→0003→0004 verified to apply
+  cleanly onto a pristine v5.3.0 via `git am --3way`. Not desktop-tested here (a second
+  shell over the live Hyprland session was intentionally avoided).
 
 ---
 

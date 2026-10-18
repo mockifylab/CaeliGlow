@@ -1,0 +1,192 @@
+From 22d4eae7c2e389ba386c9455081d9385b5e223e5 Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Sun, 18 Oct 2026 08:20:18 +0500
+Subject: [PATCH] caeliglow: right-edge power trigger + hide original power
+ entries
+
+---
+ src/app/application_services.cpp      |  5 +++
+ src/config/config_types.h             | 16 +++++++-
+ src/config/schema/config_schema.cpp   |  3 ++
+ src/shell/hot_corners/hot_corners.cpp | 53 ++++++++++++++++++++++++++-
+ src/shell/hot_corners/hot_corners.h   |  2 +
+ 5 files changed, 76 insertions(+), 3 deletions(-)
+
+diff --git a/src/app/application_services.cpp b/src/app/application_services.cpp
+index 03a253d07..21c33c3c2 100644
+--- a/src/app/application_services.cpp
++++ b/src/app/application_services.cpp
+@@ -1694,6 +1694,11 @@ void Application::triggerShellAction(const std::string& action, wl_output* outpu
+     m_panelManager.togglePanel("launcher", PanelOpenRequest{.output = output});
+   } else if (action == "control_center") {
+     m_panelManager.togglePanel("control-center", PanelOpenRequest{.output = output});
++  } else if (action == "power") {
++    // CaeliGlow: the right-edge trigger opens Noctalia's own SessionPanel, which already
++    // renders labeled action buttons and a confirm countdown for destructive actions and
++    // resolves every command through SessionActionRunner (no hard-coded paths).
++    m_panelManager.togglePanel("session", PanelOpenRequest{.output = output});
+   } else if (action == "overview") {
+     // There is no public toggle for overview in OverviewLauncherCapture.
+     // Try to execute a generic compositor action, or use niri directly if using niri.
+diff --git a/src/config/config_types.h b/src/config/config_types.h
+index f0efc224e..192f443fa 100644
+--- a/src/config/config_types.h
++++ b/src/config/config_types.h
+@@ -1161,7 +1161,9 @@ struct ShellConfig {
+     bool categories = true;
+     bool categoryIconsOnly = false;
+     bool showSettingsButton = true;
+-    bool showSessionButton = true;
++    // CaeliGlow: power lives on the right-edge trigger; hide the launcher power shortcut
++    // by default. Restorable in Settings > Launcher (show_session_button).
++    bool showSessionButton = false;
+     bool showIcons = true;
+     bool showAppOriginIndicator = true;
+     bool compact = false;
+@@ -1805,7 +1807,9 @@ struct ControlCenterConfig {
+   ControlCenterSidebarMode sidebarSectionMode = ControlCenterSidebarMode::Compact;
+   std::int32_t width = kDefaultWidth; // full-sidebar logical width; compact/none modes scale down from this
+   bool showShortcutLabels = true;
+-  bool showSessionButton = true;
++  // CaeliGlow: power lives on the right-edge trigger; hide the Control Center header power
++  // button by default. Restorable in Settings > Control Center (show_session_button).
++  bool showSessionButton = false;
+   CalendarTabConfig calendarTab;
+   bool operator==(const ControlCenterConfig&) const = default;
+ };
+@@ -1901,6 +1905,14 @@ struct HotCornersConfig {
+   // Trigger strip width in logical px; 0 = auto (25% of the output width).
+   std::int32_t edgeWidth = 0;
+ 
++  // CaeliGlow: a thin, vertically-centered trigger strip along the right edge. On
++  // hover+dwell it fires the shell action; action="power" opens Noctalia's own
++  // SessionPanel (which already provides per-button labels and a confirm countdown for
++  // destructive actions). action="none" keeps it off, so ordinary behavior is unchanged.
++  Corner rightEdge;
++  // Trigger strip thickness in logical px; 0 = auto (12 px).
++  std::int32_t rightEdgeWidth = 0;
++
+   bool operator==(const HotCornersConfig&) const = default;
+ };
+ 
+diff --git a/src/config/schema/config_schema.cpp b/src/config/schema/config_schema.cpp
+index 6ed7a197a..7ee2805d8 100644
+--- a/src/config/schema/config_schema.cpp
++++ b/src/config/schema/config_schema.cpp
+@@ -465,6 +465,9 @@ namespace noctalia::config::schema {
+         // CaeliGlow: bottom-edge launcher reveal trigger.
+         subTable(&HotCornersConfig::bottomEdge, "bottom_edge", cornerSchema),
+         field(&HotCornersConfig::edgeWidth, "edge_width"),
++        // CaeliGlow: right-edge power trigger (action="power" opens the SessionPanel).
++        subTable(&HotCornersConfig::rightEdge, "right_edge", cornerSchema),
++        field(&HotCornersConfig::rightEdgeWidth, "right_edge_width"),
+     };
+     return s;
+   }
+diff --git a/src/shell/hot_corners/hot_corners.cpp b/src/shell/hot_corners/hot_corners.cpp
+index 42f7c8976..1b504f93e 100644
+--- a/src/shell/hot_corners/hot_corners.cpp
++++ b/src/shell/hot_corners/hot_corners.cpp
+@@ -30,6 +30,9 @@ namespace {
+     } else if (position == 4) {  // CaeliGlow: bottom edge
+       action = config.bottomEdge.action;
+       command = config.bottomEdge.command;
++    } else if (position == 5) {  // CaeliGlow: right edge (power)
++      action = config.rightEdge.action;
++      command = config.rightEdge.command;
+     } else {
+       action = config.bottomRight.action;
+       command = config.bottomRight.command;
+@@ -108,6 +111,16 @@ void HotCorners::ensureSurfaces() {
+       }
+       buildBottomEdge(instance->bottomEdge, out.output, strip);
+     }
++    // CaeliGlow: right-edge power trigger (thin vertical strip).
++    if (config.rightEdge.action != "none" && !config.rightEdge.action.empty()) {
++      std::int32_t thickness = config.rightEdgeWidth;
++      if (thickness <= 0) {
++        thickness = 12;  // thin: barely intercepts the pointer at the screen edge
++      }
++      const std::int32_t lh = out.effectiveLogicalHeight();
++      const std::int32_t stripHeight = lh > 0 ? lh : 720;  // full-height; compositor re-clamps to the output
++      buildRightEdge(instance->rightEdge, out.output, thickness, stripHeight);
++    }
+ 
+     m_instances.push_back(std::move(instance));
+   }
+@@ -243,6 +256,43 @@ void HotCorners::buildBottomEdge(Corner& corner, wl_output* output, std::int32_t
+   corner.surface->requestRedraw();
+ }
+ 
++// CaeliGlow: a thin, vertically-stretched trigger strip pinned to the right edge.
++// It reuses the same dwell/enter/leave arming as the corner and bottom-edge triggers
++// (position 5). Anchoring Top + Bottom + Right lets the compositor stretch the surface
++// to the full output height, so the whole right edge is a single hover target. The
++// action (typically "power") is dispatched through Application::triggerShellAction, which
++// opens Noctalia's own SessionPanel — labeled buttons + confirm countdown, no new UI.
++void HotCorners::buildRightEdge(Corner& corner, wl_output* output, std::int32_t thickness, std::int32_t stripHeight) {
++  const LayerShellLayer layer = m_app->hotCornerLayerForOutput(output);
++  const std::int32_t width = std::max<std::int32_t>(4, thickness);
++  const std::int32_t height = std::max<std::int32_t>(64, stripHeight);
++
++  LayerSurfaceConfig surfaceConfig{
++      .nameSpace = "hot_corner_right_edge",
++      .layer = layer,
++      .anchor = LayerShellAnchor::Top | LayerShellAnchor::Bottom | LayerShellAnchor::Right,
++      .width = static_cast<std::uint32_t>(width),
++      .height = static_cast<std::uint32_t>(height),
++      .exclusiveZone = -1,
++  };
++
++  corner.surface = std::make_unique<LayerSurface>(*m_wayland, surfaceConfig);
++  corner.surface->initialize(output);
++
++  auto inputArea = ui::inputArea({});
++  inputArea->setPosition(0, 0);
++  inputArea->setSize(static_cast<float>(width), static_cast<float>(height));
++  inputArea->setOnEnter([this, &corner, output](const InputArea::PointerData&) { armCorner(corner, 5, output); });
++  inputArea->setOnLeave([this, &corner]() { disarmCorner(corner); });
++
++  corner.sceneRoot = std::move(inputArea);
++  corner.inputDispatcher.setSceneRoot(corner.sceneRoot.get());
++
++  corner.surface->setRenderContext(m_renderContext);
++  corner.surface->setSceneRoot(corner.sceneRoot.get());
++  corner.surface->requestRedraw();
++}
++
+ bool HotCorners::onPointerEvent(const PointerEvent& event) {
+   if (!m_lastEnabled || event.surface == nullptr) {
+     return false;
+@@ -250,7 +300,8 @@ bool HotCorners::onPointerEvent(const PointerEvent& event) {
+ 
+   for (const auto& instance : m_instances) {
+     Corner* corners[] = {
+-        &instance->topLeft, &instance->topRight, &instance->bottomLeft, &instance->bottomRight, &instance->bottomEdge
++        &instance->topLeft, &instance->topRight, &instance->bottomLeft, &instance->bottomRight, &instance->bottomEdge,
++        &instance->rightEdge
+     };
+     for (auto* corner : corners) {
+       if (corner->surface && event.surface == corner->surface->wlSurface()) {
+diff --git a/src/shell/hot_corners/hot_corners.h b/src/shell/hot_corners/hot_corners.h
+index c216444aa..99502af5c 100644
+--- a/src/shell/hot_corners/hot_corners.h
++++ b/src/shell/hot_corners/hot_corners.h
+@@ -44,12 +44,14 @@ private:
+     Corner bottomLeft;
+     Corner bottomRight;
+     Corner bottomEdge;  // CaeliGlow: wide centered bottom trigger strip
++    Corner rightEdge;   // CaeliGlow: thin vertical right-edge power trigger
+   };
+ 
+   void ensureSurfaces();
+   void destroySurfaces();
+   void buildCorner(Corner& corner, int position, wl_output* output);
+   void buildBottomEdge(Corner& corner, wl_output* output, std::int32_t stripWidth);  // CaeliGlow
++  void buildRightEdge(Corner& corner, wl_output* output, std::int32_t thickness, std::int32_t stripHeight);  // CaeliGlow
+   void armCorner(Corner& corner, int position, wl_output* output);
+   void disarmCorner(Corner& corner);
+   void triggerAction(const std::string& action, const std::string& command, wl_output* output);
+-- 
+2.56.0
+

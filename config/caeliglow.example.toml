@@ -1,0 +1,41 @@
+# CaeliGlow example configuration
+# -------------------------------
+# These are the *opt-in* sections introduced by the CaeliGlow patch series on top of
+# Noctalia v5.3.0. Everything here is additive: with these blocks absent, a CaeliGlow
+# build behaves exactly like ordinary Noctalia. Merge into your existing Noctalia TOML
+# config (do NOT replace the whole file — keep your bar, theme, widgets, etc.).
+#
+# How to find your config:  noctalia --print-config-path   (typical: ~/.config/noctalia/config.toml)
+
+# --- Edge triggers (patches 0002 + 0003) -------------------------------------------
+# Both reuse Noctalia's built-in HotCorners dwell mechanism: move the pointer to the
+# edge, hold for `delay_ms`, and the action fires. Leaving the strip cancels it.
+[hot_corners]
+enabled = true
+delay_ms = 120          # hold time before firing; 0 = trigger immediately on enter
+edge_width = 0          # bottom strip width; 0 = auto (~25% of the screen width)
+right_edge_width = 0    # right strip thickness; 0 = auto (12 px)
+
+# NOTE (TOML): all plain key/values for [hot_corners] must appear *before* the first
+# [hot_corners.<subtable>] header, otherwise they are parsed into that sub-table.
+
+# 0002: wide, centered bottom-edge strip reveals the existing Noctalia launcher.
+[hot_corners.bottom_edge]
+action = "launcher"
+
+# 0003: thin, full-height right-edge strip opens Noctalia's own SessionPanel, which
+# already shows labeled power / reboot / suspend / lock buttons and a confirm countdown
+# for the destructive ones. Commands are resolved via SessionActionRunner/logind.
+[hot_corners.right_edge]
+action = "power"
+
+# --- Original power buttons ----------------------------------------------------------
+# Patch 0003 flips these compiled-in defaults to `false`, so the duplicate power
+# entries in the Control Center header and the Launcher toolbar are hidden in a
+# CaeliGlow build (power now lives on the right edge). To bring either one back,
+# set it explicitly to `true`:
+#
+# [control_center]
+# show_session_button = true
+# [shell.launcher]
+# show_session_button = true
