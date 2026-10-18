@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 128" width="520" height="128" role="img" aria-label="CaeliGlow wordmark">
+  <title>CaeliGlow</title>
+  <defs>
+    <linearGradient id="wm-arc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#4FE0C4"/>
+      <stop offset="55%" stop-color="#8B7CF6"/>
+      <stop offset="100%" stop-color="#F5C86B"/>
+    </linearGradient>
+    <linearGradient id="wm-text" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"  stop-color="#EAF0FF"/>
+      <stop offset="100%" stop-color="#B9C4E8"/>
+    </linearGradient>
+    <filter id="wm-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- mark (scaled) -->
+  <g transform="translate(14,14) scale(0.78)">
+    <rect x="0" y="0" width="128" height="128" rx="28" fill="#0B1020"/>
+    <rect x="0" y="0" width="128" height="128" rx="28" fill="none" stroke="#1D2547" stroke-width="2"/>
+    <circle cx="64" cy="60" r="34" fill="#8B7CF6" opacity="0.18"/>
+    <g filter="url(#wm-glow)">
+      <path d="M92 40 A34 34 0 1 0 92 88" fill="none" stroke="url(#wm-arc)" stroke-width="11" stroke-linecap="round"/>
+    </g>
+    <circle cx="93" cy="41" r="6.5" fill="#F5C86B"/>
+  </g>
+
+  <!-- wordmark text -->
+  <text x="128" y="78" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+        font-size="52" font-weight="700" letter-spacing="0.5" fill="url(#wm-text)">
+    Caeli<tspan fill="url(#wm-arc)">Glow</tspan>
+  </text>
+  <text x="130" y="102" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+        font-size="16" font-weight="500" letter-spacing="4" fill="#7E8AB5">
+    NOCTALIA DESKTOP SHELL
+  </text>
+</svg>
