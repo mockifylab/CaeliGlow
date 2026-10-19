@@ -4,6 +4,49 @@ All notable changes to CaeliGlow are documented here. The format follows
 Keep-a-Changelog; CaeliGlow uses Semantic Versioning. CaeliGlow's version is read
 from the single canonical `VERSION` file.
 
+## [1.3.0] - 2026-10-19
+
+Interactions you can actually see, on by default.
+
+### Added
+- **Hover-to-open-panel on the bar (patch 0005).** Hovering *any* bar widget now opens
+  that widget's own panel with Noctalia's native attached-reveal animation, and closes
+  it when you leave (short grace so you can travel into the panel). It is driven entirely
+  from each widget's already-resolved left-click gesture (`Gesture::Left` →
+  `panel-toggle <id>`), so it works uniformly for built-in, user-added and plugin widgets
+  with zero per-widget code, and correctly does nothing for per-item widgets (workspaces,
+  taskbar, tray). A 140 ms dwell guard stops accidental fires; PanelManager's
+  single-active-panel model plus hover *ownership* means the hover flow only ever
+  auto-closes a panel it opened itself, so it never fights a click- or edge-opened panel.
+- **CaeliGlow right-edge power pill (patch 0006).** A new `caeliglow_power` shell action
+  opens a center-right floating session pill — Logout / Power / animated logo / Lock /
+  Restart — with the built-in confirm countdown on destructive entries and a hover-animated
+  logo (`AnimatedImage`, a reusable idle→hover GIF driver). The original `power` action
+  (native SessionPanel) is still available if you set it explicitly.
+- **Animated launcher avatar (patch 0007).** When you have no personal avatar set, the
+  launcher shows the CaeliGlow crescent mark, idle→hover animated; a real avatar takes over
+  automatically and the loop detaches on close.
+- **Full branded Settings › About page (patch 0007).** The About section is no longer two
+  lines in a box: a centered animated-logo hero with name, tagline and version, a
+  Release & updates card (live check), a "What CaeliGlow adds" summary, project links
+  (repository / releases / report-an-issue via `xdg-open`), and a Credits & license block.
+
+### Changed
+- **Edge interactions are ON by default.** `hot_corners.enabled` now defaults to `true`
+  with `bottom_edge.action = "launcher"` and `right_edge.action = "caeliglow_power"`, so a
+  fresh CaeliGlow build shows its signature interactions without any config merge. Other
+  corners stay inert (`"none"`).
+- **Launcher layout polish.** Search bar moves to the top and the app provider prefix is
+  `>` (was bottom / `/`).
+- **Bar hover no longer zooms the icon.** The 1.0.x/1.1.x scale "pop" from patch 0001 is
+  replaced by hover-to-open-panel (patch 0005); `kWidgetHoverPopScale` is gone.
+
+### Verified in this release
+- Full debug rebuild + link clean; `meson test` **153/153 pass, 0 fail**.
+- Nested Hyprland smoke test: patched shell starts and runs stable with the new hover,
+  edge, power-pill and About code active — no crashes; the host session is untouched.
+- Series `0001→0007` applies cleanly onto a pristine v5.3.0 via `git am --3way`.
+
 ## [1.1.0] - 2026-10-18
 
 Brand refresh + the animated mark rendered in-shell.

@@ -35,7 +35,7 @@ Why this wins:
 
 | Property | Benefit |
 |----------|---------|
-| Auditable | The whole product delta is 4 readable patch files. |
+| Auditable | The whole product delta is a handful of readable patch files (currently 7). |
 | Reversible | `reset-patches.sh` returns the tree to pristine upstream instantly. |
 | Upgradable | Rebasing onto a new Noctalia = retry `git am` per patch, not re-merge a fork. |
 | Safe on the machine | Installs to `/usr/local`; the distro `noctalia` package is never overwritten. |
@@ -43,22 +43,27 @@ Why this wins:
 
 ## What ships
 
-- **Bar hover** — Caelestia-style scale "pop" on widget hover; all Noctalia widget
-  contents/layout/accordion preserved.
-- **Bottom edge → launcher** — opt-in wide centered strip; hover+dwell reveals the
-  *existing* launcher via Noctalia's own HotCorners dwell engine.
-- **Right edge → power** — opt-in thin full-height strip; new `power` action opens
-  Noctalia's native **SessionPanel** (labeled actions + confirm countdown). Duplicate
-  original power buttons hidden by default, restorable in config.
-- **Settings › About + update check** — native "CaeliGlow" section headed by the
-  **animated crescent-moon mark** (twinkling stars, rendered in-shell from a bundled GIF),
-  with version, base version and a live "Check for updates" wired through Noctalia's async
-  `HttpClient` to GitHub releases, rendered through a fully unit-tested semver state machine.
-- **Brand (1.1.0)** — an original animated crescent-and-sparkle identity: static + animated
-  logo, wordmark and a cinematic animated hero, all generated from scripts in `scripts/`.
+- **Bar hover → open the widget's panel (1.3.0)** — hovering any bar widget opens *that
+  widget's* panel with Noctalia's native reveal animation and closes it on leave. Driven
+  from each widget's own left-click gesture, so it covers built-in, user and plugin widgets
+  uniformly and stays inert for per-item widgets. The old icon-zoom is gone.
+- **Bottom edge → launcher (on by default)** — a wide centered strip; hover+dwell reveals
+  the *existing* launcher via Noctalia's own HotCorners dwell engine.
+- **Right edge → CaeliGlow power pill (on by default)** — a full-height trigger whose
+  `caeliglow_power` action opens a floating, animated session pill (Logout · Power ·
+  animated logo · Lock · Restart) with confirm countdowns. The native SessionPanel `power`
+  action remains available. Duplicate original power buttons are hidden by default,
+  restorable in config.
+- **Settings › About (full branded page) + update check** — native "CaeliGlow" section
+  headed by the **animated crescent-moon mark**, now a full page: hero + version, a live
+  "Check for updates" (Noctalia's async `HttpClient` → a fully unit-tested semver state
+  machine), a feature summary, project links and attribution.
+- **Animated launcher avatar + Brand (1.1.0)** — the launcher carries the crescent mark as
+  its avatar; the identity itself (static + animated logo, wordmark, cinematic hero) is
+  original artwork generated from scripts in `scripts/`.
 
-Every edge feature is **opt-in**; absent the config, the build behaves exactly like plain
-Noctalia.
+The signature interactions ship **enabled by compiled-in defaults**, so a stock CaeliGlow
+build shows them with no config; everything stays additive and overridable.
 
 ## Engineering principles
 
@@ -75,11 +80,13 @@ Noctalia.
 ## Quality bar (current evidence)
 
 - Baseline Noctalia v5.3.0 builds and links a working binary.
-- Patches 0001–0004 rebuild + relink cleanly.
+- Patches 0001–0007 rebuild + relink cleanly.
 - `meson test` suite: **153/153 pass, 0 fail** (config schema/validate/override cover the
   new fields).
 - Standalone version/update logic tests: **all pass** (and wired into CI).
-- Full `0001→0004` series applies onto a pristine v5.3.0 via `git am --3way`.
+- Nested Hyprland smoke test: shell starts and runs stable with hover-to-open, edges, the
+  power pill and the About page active — host session untouched.
+- Full `0001→0007` series applies onto a pristine v5.3.0 via `git am --3way`.
 - Example config validates against the patched binary.
 
 ## Positioning & identity

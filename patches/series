@@ -1,6 +1,9 @@
 # CaeliGlow patch series, applied in order onto Noctalia v5.3.0 by scripts/apply-patches.sh.
-# Regenerate any of these with: (cd upstream/noctalia && git format-patch -1 -o ../../patches --start-number N)
+# Regenerate any of these with: (cd upstream/noctalia && git format-patch --binary -1 -o ../../patches --start-number N)
 0001-caeliglow-bar-hover-add-Caelestia-style-scale-pop-on.patch
 0002-caeliglow-bottom-edge-launcher-reveal-via-HotCorners.patch
 0003-caeliglow-right-edge-power-trigger-hide-original-pow.patch
 0004-caeliglow-native-settings-about-animated-logo-update-check.patch
+0005-caeliglow-bar-hover-opens-widget-panel.patch
+0006-caeliglow-power-pill-on-by-default-edges.patch
+0007-caeliglow-launcher-avatar-and-branded-about.patch

@@ -1,0 +1,290 @@
+From 20392d27a54a04f6a35e5288e5d27b4d60679a2a Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 09:46:25 +0500
+Subject: [PATCH 5/7] caeliglow: bar hover opens the widget panel (replaces
+ icon-zoom pop)
+
+Hovering any bar widget now opens the panel bound to that widget's
+left-click gesture (panel-toggle), with a 140ms dwell guard and a
+close-on-leave grace. Generic and config-driven, so built-in, user and
+plugin widgets all follow the same rule; per-item widgets stay inert.
+Hover only auto-closes a panel it opened (ownership), so it never fights
+click- or edge-opened panels. Removes the 0001 kWidgetHoverPopScale pop.
+---
+ src/shell/bar/bar.cpp           | 118 ++++++++++++++++++++++++++------
+ src/shell/bar/bar.h             |   5 ++
+ src/shell/bar/bar_instance.h    |   9 +++
+ src/shell/bar/widget.cpp        |  28 ++++++++
+ src/shell/bar/widget.h          |   9 +++
+ src/shell/panel/panel_manager.h |   4 ++
+ 6 files changed, 153 insertions(+), 20 deletions(-)
+
+diff --git a/src/shell/bar/bar.cpp b/src/shell/bar/bar.cpp
+index 3ab8edca9..99fc077ae 100644
+--- a/src/shell/bar/bar.cpp
++++ b/src/shell/bar/bar.cpp
+@@ -423,12 +423,15 @@ namespace {
+   // Hover highlight: peak fill alpha of the widget-foreground tint, and the cross-axis inset
+   // (logical px, content-scaled) of per-member pills inside capsule groups.
+   constexpr float kWidgetHoverFillAlpha = 0.1F;
+-  // CaeliGlow: subtle hover "pop" scale applied to a widget's render transform on
+-  // pointer enter (returns to 1.0 on leave). Independent re-implementation of the
+-  // lively Caelestia-style bar hover feel; Noctalia's contents/layout are unchanged
+-  // because setScale() is a paint-only transform (origin defaults to node center).
+-  constexpr float kWidgetHoverPopScale = 1.06F;
+   constexpr float kGroupHoverCrossInset = 2.0F;
++  // CaeliGlow: hover-reveal of bar widget panels. This replaces the earlier icon "pop" zoom,
++  // which the design brief rejected in favor of hovering a widget actually opening its panel
++  // (Caelestia-style). A short dwell keeps panels from flashing as the pointer sweeps across
++  // the bar; the close-watch interval decides how snappy dismissal feels when the pointer
++  // leaves both the widget and the panel.
++  constexpr bool kHoverRevealEnabled = true;
++  constexpr std::chrono::milliseconds kHoverRevealDwell{140};
++  constexpr std::chrono::milliseconds kHoverRevealCloseWatch{170};
+ 
+   // Sizes a run's hover overlays after the capsule geometry is final. Single runs (and plain
+   // widgets) get one overlay covering the whole shell; group runs get one pill per member so
+@@ -2605,6 +2608,11 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
+ 
+   instance.widgetByRoot.clear();
+   instance.hoverHighlightWidget = nullptr;
++  // CaeliGlow: drop any hover-reveal state before the widget set is rebuilt underneath us.
++  instance.hoverRevealDwellTimer.stop();
++  instance.hoverRevealCloseTimer.stop();
++  instance.hoverRevealWidget = nullptr;
++  instance.hoverRevealPanelId.clear();
+   if (instance.hoverUnderlay != nullptr) {
+     while (!instance.hoverUnderlay->children().empty()) {
+       instance.hoverUnderlay->removeChild(instance.hoverUnderlay->children().back().get());
+@@ -2958,26 +2966,95 @@ void Bar::animateWidgetHoverHighlight(BarInstance& instance, Widget& widget, boo
+       {}, box
+   );
+ 
+-  // CaeliGlow: drive a render-only scale "pop" on the widget's layout-bounds node so the
+-  // hovered widget lifts toward the pointer like the Caelestia reference, without altering
+-  // bar layout or widget contents. EaseOutBack gives the slight overshoot that reads as
+-  // "springy"; release settles back to exactly 1.0.
+-  if (Node* bounds = widget.layoutBoundsNode()) {
+-    instance.animations.cancelForOwner(bounds);
+-    const float from = bounds->scale();
+-    const float to = hovered ? kWidgetHoverPopScale : 1.0F;
+-    instance.animations.animate(
+-        from, to, hovered ? Style::animNormal : Style::animFast,
+-        hovered ? Easing::EaseOutBack : Easing::EaseOutCubic,
+-        [bounds](float s) { bounds->setScale(s); }, {}, bounds
+-    );
+-  }
+-
++  // CaeliGlow: the icon "pop" zoom used to live here. Removed on purpose -- hovering a widget
++  // now reveals that widget's panel instead (see Bar::handleWidgetHoverReveal). The tint above
++  // stays as the only whole-widget hover feedback.
+   if (instance.surface != nullptr) {
+     instance.surface->requestRedraw();
+   }
+ }
+ 
++void Bar::handleWidgetHoverReveal(BarInstance& instance, InputArea* hoveredArea) {
++  if (!kHoverRevealEnabled) {
++    return;
++  }
++  Widget* hovered = widgetFromHoveredArea(instance, hoveredArea);
++
++  // Still parked on the widget whose panel we already revealed: keep it open and stop the timers
++  // (the pointer is exactly where the panel belongs).
++  if (hovered != nullptr && hovered == instance.hoverRevealWidget) {
++    instance.hoverRevealDwellTimer.stop();
++    instance.hoverRevealCloseTimer.stop();
++    return;
++  }
++
++  // Left the revealed widget (or never had one): cancel a dwell that hasn't fired yet, so a fast
++  // sweep across the bar never opens a panel we already moved away from.
++  instance.hoverRevealDwellTimer.stop();
++
++  // If we own a revealed panel, arm the close-watch. It keeps the panel alive while the pointer
++  // dives into it and closes it once the pointer is gone from both the widget and the panel.
++  if (instance.hoverRevealWidget != nullptr) {
++    beginHoverRevealCloseWatch(instance);
++  }
++
++  std::string panelId;
++  std::string context;
++  if (hovered == nullptr || !hovered->boundHoverPanel(panelId, context)) {
++    return;
++  }
++
++  // Dwell before opening. When it fires, hover has not changed since scheduling (any change
++  // cancels this timer above), so the pointer is confirmed to still be on this widget.
++  Widget* target = hovered;
++  instance.hoverRevealDwellTimer.start(kHoverRevealDwell, [this, &instance, target]() {
++    const std::string opened = target->hoverOpenBoundPanel();
++    if (opened.empty()) {
++      return;
++    }
++    instance.hoverRevealWidget = target;
++    instance.hoverRevealPanelId = opened;
++    beginHoverRevealCloseWatch(instance);
++  });
++}
++
++void Bar::beginHoverRevealCloseWatch(BarInstance& instance) {
++  if (instance.hoverRevealPanelId.empty()) {
++    return;
++  }
++  instance.hoverRevealCloseTimer.startRepeating(kHoverRevealCloseWatch, [this, &instance]() {
++    auto& pm = PanelManager::instance();
++    const std::string owned = instance.hoverRevealPanelId;
++    if (owned.empty() || !pm.isOpenPanel(owned)) {
++      // Our panel was closed or replaced by something else (click, edge trigger, another hover).
++      // Relinquish quietly; we only ever dismiss panels we opened ourselves.
++      clearHoverReveal(instance, /*closePanel=*/false);
++      return;
++    }
++    const bool pointerOnPanel = pm.isPointerInsidePanel();
++    const bool pointerOnWidget = instance.hoverRevealWidget != nullptr
++        && instance.hoverRevealWidget == instance.hoverHighlightWidget;
++    if (pointerOnPanel || pointerOnWidget) {
++      return; // keep open, re-check on the next tick
++    }
++    clearHoverReveal(instance, /*closePanel=*/true);
++  });
++}
++
++void Bar::clearHoverReveal(BarInstance& instance, bool closePanel) {
++  instance.hoverRevealDwellTimer.stop();
++  instance.hoverRevealCloseTimer.stop();
++  const std::string owned = instance.hoverRevealPanelId;
++  instance.hoverRevealWidget = nullptr;
++  instance.hoverRevealPanelId.clear();
++  if (closePanel && !owned.empty()) {
++    auto& pm = PanelManager::instance();
++    if (pm.isOpenPanel(owned)) {
++      pm.closePanel(/*animateClose=*/true);
++    }
++  }
++}
++
+ void Bar::updateAccordionExpansion(BarInstance& instance, InputArea* hoveredArea) {
+   Widget* target = widgetFromHoveredArea(instance, hoveredArea);
+ 
+@@ -3401,6 +3478,7 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
+           tooltipAreaForHover(*inst, next), inst->surface->layerSurface(), inst->output
+       );
+       updateWidgetHoverHighlight(*inst, next);
++      handleWidgetHoverReveal(*inst, next);
+       updateAccordionExpansion(*inst, next);
+     });
+ 
+diff --git a/src/shell/bar/bar.h b/src/shell/bar/bar.h
+index 1afb1e0a9..4f6983642 100644
+--- a/src/shell/bar/bar.h
++++ b/src/shell/bar/bar.h
+@@ -133,6 +133,11 @@ private:
+   void attachWidgetsToSections(BarInstance& instance);
+   void updateWidgetHoverHighlight(BarInstance& instance, InputArea* hoveredArea);
+   void animateWidgetHoverHighlight(BarInstance& instance, Widget& widget, bool hovered);
++  // CaeliGlow: reveal (and auto-close) a widget's panel on hover, Caelestia-style. Driven from
++  // the same hover-change path as the highlight. See bar.cpp for the dwell + close-watch model.
++  void handleWidgetHoverReveal(BarInstance& instance, InputArea* hoveredArea);
++  void beginHoverRevealCloseWatch(BarInstance& instance);
++  void clearHoverReveal(BarInstance& instance, bool closePanel);
+   void updateAccordionExpansion(BarInstance& instance, InputArea* hoveredArea);
+   void rebuildInstanceContents(BarInstance& instance, const BarConfig& newConfig);
+   [[nodiscard]] BarServices services() const;
+diff --git a/src/shell/bar/bar_instance.h b/src/shell/bar/bar_instance.h
+index 508505588..2bc8f0e40 100644
+--- a/src/shell/bar/bar_instance.h
++++ b/src/shell/bar/bar_instance.h
+@@ -107,6 +107,15 @@ struct BarInstance {
+   std::unordered_map<const Node*, Widget*> widgetByRoot;
+   Widget* hoverHighlightWidget = nullptr;
+ 
++  // CaeliGlow hover-reveal: the widget whose panel we opened on hover, the panel id we own
++  // (so we only auto-close panels we opened, never click- or edge-opened ones), the dwell
++  // timer before opening, and the repeating watch that closes the panel once the pointer has
++  // left both the widget and the panel.
++  Widget* hoverRevealWidget = nullptr;
++  std::string hoverRevealPanelId;
++  Timer hoverRevealDwellTimer;
++  Timer hoverRevealCloseTimer;
++
+   Signal<>::ScopedConnection paletteConn;
+   std::optional<AttachedPanelGeometry> attachedPanelGeometry;
+ };
+diff --git a/src/shell/bar/widget.cpp b/src/shell/bar/widget.cpp
+index abba67544..f8e3f0520 100644
+--- a/src/shell/bar/widget.cpp
++++ b/src/shell/bar/widget.cpp
+@@ -187,6 +187,34 @@ void Widget::requestPanelToggle(
+   }
+ }
+ 
++bool Widget::boundHoverPanel(std::string& panelId, std::string& context) {
++  panelId.clear();
++  context.clear();
++  const auto* action = m_gestureBindings.find(noctalia::bar::Gesture::Left);
++  if (action == nullptr || action->kind != noctalia::bar::WidgetAction::Kind::Ipc
++      || !noctalia::bar::isAnchoredPanelVerb(action->verb)) {
++    return false;
++  }
++  const auto args = noctalia::bar::parsePanelVerbArgs(action->args);
++  if (args.panelId.empty()) {
++    return false;
++  }
++  panelId = args.panelId;
++  context = args.panelContext;
++  return true;
++}
++
++std::string Widget::hoverOpenBoundPanel() {
++  std::string panelId;
++  std::string context;
++  if (!boundHoverPanel(panelId, context)) {
++    return {};
++  }
++  // Open (not toggle): hover always reveals; the bar's close-watch owns dismissal.
++  requestPanelToggle(panelId, context, std::nullopt, std::nullopt, Widget::PanelActivation::Open);
++  return panelId;
++}
++
+ void Widget::applyCommonOptions(
+     const CommonWidgetOptions& options, FontWeight barFontWeight, const std::string& barFontFamily,
+     std::string_view logContext
+diff --git a/src/shell/bar/widget.h b/src/shell/bar/widget.h
+index f54e58fbb..14cba391a 100644
+--- a/src/shell/bar/widget.h
++++ b/src/shell/bar/widget.h
+@@ -72,6 +72,15 @@ public:
+   [[nodiscard]] Node* root() const noexcept { return m_innerRoot; }
+   // The node the bar mounts: a transparent InputArea wrapping root(), carrying gesture actions.
+   [[nodiscard]] Node* outerNode() const noexcept { return m_outer ? m_outer.get() : m_outerPtr; }
++
++  // CaeliGlow hover-reveal: report the panel this widget's primary (left) click opens, but only
++  // when that binding is an anchored-panel verb (panel-toggle/panel-open). Widgets whose click
++  // does something else (workspaces, taskbar, tray items, toggles) report no target, so hovering
++  // them never fires a side effect. Covers user-configured and plugin widgets for free.
++  [[nodiscard]] bool boundHoverPanel(std::string& panelId, std::string& context);
++  // Opens the bound panel without toggling (hover semantics). Returns the opened panel id, or
++  // an empty string when there is no panel target.
++  [[nodiscard]] std::string hoverOpenBoundPanel();
+   [[nodiscard]] float width() const noexcept;
+   [[nodiscard]] float height() const noexcept;
+ 
+diff --git a/src/shell/panel/panel_manager.h b/src/shell/panel/panel_manager.h
+index d349f076a..c10ac4c69 100644
+--- a/src/shell/panel/panel_manager.h
++++ b/src/shell/panel/panel_manager.h
+@@ -115,6 +115,10 @@ public:
+ 
+   [[nodiscard]] bool isOpen() const noexcept;
+   [[nodiscard]] bool isOpenPanel(std::string_view panelId) const noexcept;
++  // CaeliGlow: true while the pointer is over the currently open panel's surface. The bar
++  // hover-reveal logic uses this to keep a hover-opened panel alive while the pointer moves
++  // from the widget down into the panel itself.
++  [[nodiscard]] bool isPointerInsidePanel() const noexcept { return m_pointerInside; }
+   [[nodiscard]] bool isPanelTransitionActive() const noexcept;
+   [[nodiscard]] bool isAttachedOpen() const noexcept;
+   // Output the active panel is on; null when none is open.
+-- 
+2.56.0
+

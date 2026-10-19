@@ -90,8 +90,14 @@ DEFS = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{S}" height="{S}" view
 TAIL = "</svg>"
 
 
-def frame_body(t):
-    """Scene body for t in [0,1) (transparent background)."""
+def frame_body(t, hover=False):
+    """Scene body for t in [0,1) (transparent background).
+
+    hover=False -> the calm idle twinkle (used for the About logo + panel idle).
+    hover=True  -> a clearly different, livelier motion for the power-panel logo on
+    pointer hover: the big star makes a full seamless 360-degree turn, the glow
+    pulses faster and brighter, and the small sparkles twinkle at double rate.
+    """
     out = []
     # crescent moon
     out.append(f'<rect width="{S}" height="{S}" fill="url(#moon)" mask="url(#crescent)"/>')
@@ -99,21 +105,28 @@ def frame_body(t):
     out.append(f'<circle cx="352" cy="112" r="30" fill="url(#goldness)"/>')
     out.append(f'<circle cx="356" cy="392" r="22" fill="url(#goldness)"/>')
 
-    # big star: gentle pulse + small oscillating rotation (seamless)
+    # big star: gentle pulse + small oscillating rotation (idle), or a full turn
+    # + stronger pulse/glow (hover). Both are seamless over t in [0,1).
     bx, by, bR = BIG
-    pulse = 1 + 0.06 * math.sin(math.tau * 2 * t)
-    rot = 6 * math.sin(math.tau * t)
-    glow = 0.45 + 0.25 * (0.5 + 0.5 * math.sin(math.tau * 2 * t))
+    if hover:
+        pulse = 1 + 0.12 * math.sin(math.tau * 3 * t)
+        rot = 360.0 * t
+        glow = 0.6 + 0.4 * (0.5 + 0.5 * math.sin(math.tau * 3 * t))
+    else:
+        pulse = 1 + 0.06 * math.sin(math.tau * 2 * t)
+        rot = 6 * math.sin(math.tau * t)
+        glow = 0.45 + 0.25 * (0.5 + 0.5 * math.sin(math.tau * 2 * t))
     out.append(f'<g transform="translate({bx},{by}) rotate({rot:.1f}) scale({pulse:.3f})">')
     out.append(f'<circle r="{bR*1.5:.0f}" fill="url(#bigness)" opacity="{glow:.2f}"/>')
     out.append(f'<path d="{star_path(0, 0, bR)}" fill="url(#bigstar)"/>')
     out.append('</g>')
 
-    # small gold sparkles: twinkle (opacity + scale), staggered phases
+    # small gold sparkles: twinkle (opacity + scale), staggered phases; livelier on hover
     for (x, y, r, ph, cyc) in SMALLS:
-        tw = 0.5 + 0.5 * math.sin(math.tau * cyc * t + ph)
-        op = 0.35 + 0.6 * tw
-        sc = 0.7 + 0.5 * tw
+        rate = cyc * 2 if hover else cyc
+        tw = 0.5 + 0.5 * math.sin(math.tau * rate * t + ph)
+        op = (0.45 + 0.55 * tw) if hover else (0.35 + 0.6 * tw)
+        sc = (0.75 + 0.6 * tw) if hover else (0.7 + 0.5 * tw)
         out.append(f'<g transform="translate({x},{y}) scale({sc:.3f})" opacity="{min(1,op):.2f}">')
         out.append(f'<circle r="{r*1.6:.0f}" fill="url(#goldness)"/>')
         out.append(f'<path d="{star_path(0, 0, r)}" fill="{GOLD}"/>')
@@ -175,6 +188,28 @@ def wordmark_svg(mark):
         'NOCTALIA DESKTOP SHELL</text></svg>')
 
 
+def emit_gif(out_name, hover, size, steps, delay):
+    """Render `steps` frames of the mark (idle or hover motion) into a small
+    transparent looping GIF at `size` px, for use as a bundled shell asset."""
+    scratch = os.path.join(FRAMES_DIR, out_name)
+    if os.path.isdir(scratch):
+        shutil.rmtree(scratch)
+    os.makedirs(scratch)
+    pngs = []
+    for i in range(steps):
+        svg = DEFS + frame_body(i / steps, hover=hover) + TAIL
+        sp = os.path.join(scratch, f"p_{i:03d}.svg")
+        pp = os.path.join(scratch, f"p_{i:03d}.png")
+        with open(sp, "w") as f:
+            f.write(svg)
+        subprocess.run(["rsvg-convert", "-w", str(size), "-h", str(size), sp, "-o", pp], check=True)
+        pngs.append(pp)
+    subprocess.run(
+        ["magick", "-delay", str(delay), "-loop", "0", *pngs,
+         "-dispose", "Background", "-layers", "OptimizeTransparency",
+         os.path.join(OUT_DIR, out_name)], check=True)
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     if os.path.isdir(FRAMES_DIR):
@@ -207,6 +242,11 @@ def main():
         mark = f.read()
     with open(os.path.join(OUT_DIR, "wordmark.svg"), "w") as f:
         f.write(wordmark_svg(mark))
+
+    # Power-panel logo: two small (96px) transparent GIFs sharing the mark, one for
+    # the calm idle state and one for the livelier pointer-hover state.
+    emit_gif("logo-panel-idle.gif", hover=False, size=96, steps=30, delay=6)
+    emit_gif("logo-panel-hover.gif", hover=True, size=96, steps=30, delay=3)
     print("moon logo assets generated")
 
 

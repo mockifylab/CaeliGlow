@@ -1,39 +1,52 @@
 # CaeliGlow example configuration
 # -------------------------------
-# These are the *opt-in* sections introduced by the CaeliGlow patch series on top of
-# Noctalia v5.3.0. Everything here is additive: with these blocks absent, a CaeliGlow
-# build behaves exactly like ordinary Noctalia. Merge into your existing Noctalia TOML
-# config (do NOT replace the whole file — keep your bar, theme, widgets, etc.).
+# The signature CaeliGlow interactions are enabled by COMPILED-IN DEFAULTS, so a stock
+# CaeliGlow build already shows them with no config at all:
+#   * Bar hover ............ hovering any bar widget opens its panel (and closes on leave)
+#   * Bottom edge .......... hover + dwell reveals the launcher
+#   * Right edge ........... hover + dwell opens the CaeliGlow power pill
+#   * Settings > About ..... animated branded page with a live update check
+#
+# Everything below is OPTIONAL tuning. All of it is additive: merge into your existing
+# Noctalia TOML config (do NOT replace the whole file — keep your bar, theme, widgets).
+# With these blocks absent you get the defaults above; override any value to change it.
 #
 # How to find your config:  noctalia --print-config-path   (typical: ~/.config/noctalia/config.toml)
 
-# --- Edge triggers (patches 0002 + 0003) -------------------------------------------
-# Both reuse Noctalia's built-in HotCorners dwell mechanism: move the pointer to the
-# edge, hold for `delay_ms`, and the action fires. Leaving the strip cancels it.
+# --- Edge triggers (patches 0002 + 0003 + 0006) --------------------------------------
+# Reuse Noctalia's built-in HotCorners dwell mechanism: move the pointer to the edge,
+# hold for `delay_ms`, and the action fires. Leaving the strip cancels it.
 [hot_corners]
-enabled = true
+enabled = true          # default: true (CaeliGlow ships its edges on)
 delay_ms = 120          # hold time before firing; 0 = trigger immediately on enter
 edge_width = 0          # bottom strip width; 0 = auto (~25% of the screen width)
-right_edge_width = 0    # right strip thickness; 0 = auto (12 px)
+right_edge_width = 0    # right strip thickness; 0 = auto
 
 # NOTE (TOML): all plain key/values for [hot_corners] must appear *before* the first
 # [hot_corners.<subtable>] header, otherwise they are parsed into that sub-table.
 
-# 0002: wide, centered bottom-edge strip reveals the existing Noctalia launcher.
+# Bottom-edge strip reveals the existing Noctalia launcher. (default: "launcher")
 [hot_corners.bottom_edge]
 action = "launcher"
 
-# 0003: thin, full-height right-edge strip opens Noctalia's own SessionPanel, which
-# already shows labeled power / reboot / suspend / lock buttons and a confirm countdown
-# for the destructive ones. Commands are resolved via SessionActionRunner/logind.
+# Right-edge strip. The CaeliGlow default "caeliglow_power" opens the floating, animated
+# right-middle power pill (Logout / Power / logo / Lock / Restart, with confirm
+# countdowns). Set action = "power" instead to open Noctalia's native SessionPanel, or
+# "none" to disable the right edge.
 [hot_corners.right_edge]
-action = "power"
+action = "caeliglow_power"
 
-# --- Original power buttons ----------------------------------------------------------
-# Patch 0003 flips these compiled-in defaults to `false`, so the duplicate power
-# entries in the Control Center header and the Launcher toolbar are hidden in a
-# CaeliGlow build (power now lives on the right edge). To bring either one back,
-# set it explicitly to `true`:
+# --- Bar hover (patch 0005) -----------------------------------------------------------
+# Hover-to-open-panel needs no configuration: it is driven from each widget's own
+# left-click gesture (which panel it toggles), so it automatically covers built-in,
+# user-added and plugin widgets, and stays inert for per-item widgets (workspaces,
+# taskbar, tray). Set a widget's left-click gesture to something that is not a panel
+# toggle if you want hover to do nothing for that widget.
+
+# --- Original power buttons ------------------------------------------------------------
+# Patch 0003 hides the duplicate power entries in the Control Center header and the
+# Launcher toolbar, since session actions now live on the right edge. To bring either
+# one back, set it explicitly to `true`:
 #
 # [control_center]
 # show_session_button = true

@@ -1,0 +1,367 @@
+From 62030bc6ba3af6b1e7b646a736e4cdd8c17c6419 Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 09:46:49 +0500
+Subject: [PATCH 7/7] caeliglow: animated launcher avatar and full branded
+ About page
+
+Launcher: when no personal avatar is set, show the animated CaeliGlow crescent mark (idle-to-hover via AnimatedImage); a real avatar takes over cleanly and the loop detaches on close. Settings About: expand the compact section into a full branded native page - centered animated-logo hero with name, tagline and version, a Release and updates card (live check), a What CaeliGlow adds summary, project links (repository, releases, report-an-issue via xdg-open) and a Credits and license block, all built from native Settings widgets.
+---
+ assets/translations/en.json                   |   2 +-
+ src/shell/launcher/launcher_panel.cpp         |  59 +++++++
+ src/shell/launcher/launcher_panel.h           |  12 ++
+ src/shell/settings/settings_content_about.cpp | 146 +++++++++++++-----
+ 4 files changed, 183 insertions(+), 36 deletions(-)
+
+diff --git a/assets/translations/en.json b/assets/translations/en.json
+index 12ba4a13d..103bf6527 100644
+--- a/assets/translations/en.json
++++ b/assets/translations/en.json
+@@ -832,7 +832,7 @@
+         "title": "Windows"
+       }
+     },
+-    "search-placeholder": "Search applications…"
++    "search-placeholder": "Type > for commands, or search apps…"
+   },
+   "location": {
+     "errors": {
+diff --git a/src/shell/launcher/launcher_panel.cpp b/src/shell/launcher/launcher_panel.cpp
+index 555537c70..b2a423cd5 100644
+--- a/src/shell/launcher/launcher_panel.cpp
++++ b/src/shell/launcher/launcher_panel.cpp
+@@ -2219,6 +2219,15 @@ void LauncherPanel::syncLauncherAvatar(Renderer& renderer) {
+   const std::string displayPath = shell::avatarDisplayPath(m_accounts, m_config->config());
+   if (displayPath.empty()) {
+     m_launcherAvatarPath.clear();
++    // CaeliGlow: no user avatar configured -> show the animated brand logo, and fall
++    // back to the static glyph only when the GIF can't be decoded.
++    if (ensureLogoAvatar(renderer)) {
++      return;
++    }
++    if (m_logoAvatarActive) {
++      m_logoAnim.detach();
++      m_logoAvatarActive = false;
++    }
+     m_launcherAvatar->clear(renderer);
+     m_launcherAvatar->setVisible(false);
+     m_launcherAvatar->setParticipatesInLayout(false);
+@@ -2227,6 +2236,13 @@ void LauncherPanel::syncLauncherAvatar(Renderer& renderer) {
+     return;
+   }
+ 
++  // A real user avatar takes over from the brand logo.
++  if (m_logoAvatarActive) {
++    m_logoAnim.detach();
++    m_logoAvatarActive = false;
++    m_launcherAvatar->clear(renderer);
++  }
++
+   if (displayPath != m_launcherAvatarPath) {
+     m_launcherAvatarPath = displayPath;
+     m_launcherAvatar->clear(renderer);
+@@ -2248,6 +2264,44 @@ void LauncherPanel::syncLauncherAvatar(Renderer& renderer) {
+   }
+ }
+ 
++bool LauncherPanel::ensureLogoAvatar(Renderer& renderer) {
++  if (!m_logoAvatarLoaded) {
++    m_logoAvatarLoaded = true;
++    m_logoAvatarUsable =
++        m_logoAnim.load(renderer, caeliglow::AnimatedImage::kIdle, "caeliglow/logo-panel-idle.gif");
++    if (!m_logoAvatarUsable) {
++      return false;
++    }
++  }
++  if (!m_logoAvatarUsable || m_launcherAvatar == nullptr || m_launcherAvatarFallback == nullptr) {
++    return false;
++  }
++  m_logoRenderer = &renderer;
++  m_logoAnim.attach(renderer, m_launcherAvatar);
++  m_launcherAvatar->setVisible(true);
++  m_launcherAvatar->setParticipatesInLayout(true);
++  m_launcherAvatarFallback->setVisible(false);
++  m_launcherAvatarFallback->setParticipatesInLayout(false);
++  m_logoAvatarActive = true;
++  PanelManager::instance().requestFrameTick();
++  return true;
++}
++
++void LauncherPanel::onFrameTick(float deltaMs) {
++  if (!m_logoAvatarActive || m_logoRenderer == nullptr || m_launcherAvatar == nullptr) {
++    return;
++  }
++  if (!m_logoAnim.isAnimating()) {
++    return;
++  }
++  m_logoAnim.advance(*m_logoRenderer, deltaMs);
++  if (root() != nullptr) {
++    root()->markPaintDirty();
++  }
++  PanelManager::instance().requestRedraw();
++  PanelManager::instance().requestFrameTick();
++}
++
+ void LauncherPanel::showProviderOverview() {
+   const std::string prefix = m_config != nullptr ? m_config->config().shell.launcher.providerPrefix : "/";
+   if (!prefix.empty()) {
+@@ -2346,6 +2400,11 @@ void LauncherPanel::onClose() {
+   if (m_actionsMenu != nullptr && m_actionsMenu->isOpen()) {
+     m_actionsMenu->close();
+   }
++  // CaeliGlow: stop driving the brand-logo avatar frame loop while the panel is closed.
++  if (m_logoAvatarActive) {
++    m_logoAnim.detach();
++    m_logoAvatarActive = false;
++  }
+   if (m_asyncTextures != nullptr) {
+     DeferredCall::callLater([asyncTextures = m_asyncTextures]() { asyncTextures->trimUnused(0); });
+   }
+diff --git a/src/shell/launcher/launcher_panel.h b/src/shell/launcher/launcher_panel.h
+index 164e010b0..5f14aea27 100644
+--- a/src/shell/launcher/launcher_panel.h
++++ b/src/shell/launcher/launcher_panel.h
+@@ -2,6 +2,7 @@
+ 
+ #include "launcher/launcher_provider.h"
+ #include "launcher/usage_tracker.h"
++#include "caeliglow/animated_image.h"
+ #include "shell/panel/panel.h"
+ #include "system/icon_resolver.h"
+ #include "ui/signal.h"
+@@ -52,6 +53,7 @@ public:
+   void onOpen(std::string_view context) override;
+   void onClose() override;
+   void onIconThemeChanged() override;
++  void onFrameTick(float deltaMs) override;
+ 
+   void clearUsage();
+   void syncUsageOrderingState();
+@@ -129,6 +131,10 @@ private:
+   void applyPinnedApplicationOrder();
+   void reorderPinnedApplication(std::string_view sourcePath, std::string_view targetPath);
+   void syncLauncherAvatar(Renderer& renderer);
++  // CaeliGlow: when no user avatar is configured, drive the launcher's profile image
++  // with the animated brand logo (idle GIF). Returns false if the asset is unavailable,
++  // in which case the caller falls back to the static glyph.
++  bool ensureLogoAvatar(Renderer& renderer);
+   void showProviderOverview();
+   void showSessionActions();
+   [[nodiscard]] bool usesBrowserLayout() const;
+@@ -196,6 +202,12 @@ private:
+   AccountsService* m_accounts = nullptr;
+   AsyncTextureCache* m_asyncTextures = nullptr;
+   std::string m_launcherAvatarPath;
++  // CaeliGlow: animated brand-logo avatar state (used only when no user avatar exists).
++  caeliglow::AnimatedImage m_logoAnim;
++  Renderer* m_logoRenderer = nullptr;
++  bool m_logoAvatarLoaded = false;
++  bool m_logoAvatarUsable = false;
++  bool m_logoAvatarActive = false;
+   std::unique_ptr<ContextMenuPopup> m_actionsMenu;
+   Signal<>::ScopedConnection m_appIconColorizeConn;
+   std::function<void()> m_onCopiedActivation;
+diff --git a/src/shell/settings/settings_content_about.cpp b/src/shell/settings/settings_content_about.cpp
+index 400e603bb..e970d5815 100644
+--- a/src/shell/settings/settings_content_about.cpp
++++ b/src/shell/settings/settings_content_about.cpp
+@@ -15,6 +15,7 @@
+ #include "core/files/resource_paths.h"
+ #include "core/log.h"
+ #include "net/http_client.h"
++#include "net/url_open.h"
+ #include "render/core/image_decoder.h"
+ #include "render/core/renderer.h"
+ #include "render/core/texture_manager.h"
+@@ -57,56 +58,82 @@ namespace settings {
+     }
+     const float scale = ctx.scale;
+ 
+-    auto sectionCol = ui::column({
++    // Repository coordinates (from meta.hpp) drive every outbound link.
++    const std::string repoOwner{caeliglow::kRepoOwner};
++    const std::string repoName{caeliglow::kRepoName};
++    const std::string repoUrl = "https://github.com/" + repoOwner + "/" + repoName;
++    const std::string projectReleasesUrl = repoUrl + "/releases";
++    const std::string projectIssuesUrl = repoUrl + "/issues";
++
++    // Whole page lives in one stretched, scroll-friendly column so native Settings cards
++    // and spacing match every other section.
++    auto pageCol = ui::column({
+         .align = FlexAlign::Stretch,
+-        .gap = Style::spaceSm * scale,
++        .gap = Style::spaceMd * scale,
+         .padding = Style::spaceLg * scale,
+         .fill = clearColorSpec(),
+         .fillWidth = true,
+     });
+-    Flex* section = sectionCol.get();
+-    content.addChild(std::move(sectionCol));
++    Flex* page = pageCol.get();
++    content.addChild(std::move(pageCol));
+ 
+-    auto titleRow = ui::row(
+-        {.align = FlexAlign::Center, .gap = Style::spaceSm * scale, .fillWidth = true},
+-        label("CaeliGlow", Style::fontSizeHeader * scale, ColorRole::Primary, FontWeight::Bold)
+-    );
+-    // Animated crescent-moon mark to the left of the title. The node is created empty;
+-    // SettingsWindow decodes the GIF and drives its frames (see attachAboutLogo).
++    // ── Hero: animated crescent mark, name, tagline, version ─────────────────
++    auto heroCol = ui::column({
++        .align = FlexAlign::Center,
++        .gap = Style::spaceXs * scale,
++        .padding = Style::spaceLg * scale,
++        .fillWidth = true,
++    });
++    Flex* hero = heroCol.get();
++    page->addChild(std::move(heroCol));
++
++    // The node is created empty; SettingsWindow decodes the GIF and drives its frames
++    // (see attachAboutLogo). Pointer handed back via ctx.logoOut.
+     Image* logoImage = nullptr;
+-    const float logoSize = Style::fontSizeHeader * scale * 1.7F;
+-    auto logo = ui::image({
++    const float heroLogo = Style::fontSizeHeader * scale * 3.0F;
++    hero->addChild(ui::image({
+         .out = &logoImage,
+         .fit = ImageFit::Contain,
+-        .width = logoSize,
+-        .height = logoSize,
+-    });
+-    titleRow->insertChildAt(0, std::move(logo));
++        .width = heroLogo,
++        .height = heroLogo,
++    }));
+     if (ctx.logoOut != nullptr) {
+       *ctx.logoOut = logoImage;
+     }
+-    if (ctx.pageTitleRow != nullptr && ctx.pageTitleRow->children().empty()) {
+-      ctx.pageTitleRow->addChild(std::move(titleRow));
+-    } else {
+-      section->addChild(std::move(titleRow));
+-    }
++    hero->addChild(ui::label({
++        .text = std::string("CaeliGlow"),
++        .fontSize = Style::fontSizeHeader * scale * 1.6F,
++        .fontWeight = FontWeight::Bold,
++        .color = colorSpecFromRole(ColorRole::Primary),
++        .textAlign = TextAlign::Center,
++    }));
++    hero->addChild(ui::label({
++        .text = std::string("A calm, glowing desktop shell for CachyOS + Hyprland."),
++        .fontSize = Style::fontSizeBody * scale,
++        .color = colorSpecFromRole(ColorRole::OnSurfaceVariant),
++        .maxWidth = 420.0F * scale,
++        .maxLines = 2,
++        .textAlign = TextAlign::Center,
++    }));
++    hero->addChild(ui::label({
++        .text = std::string("v") + ctx.installedVersion,
++        .fontSize = Style::fontSizeCaption * scale,
++        .color = colorSpecFromRole(ColorRole::Secondary),
++        .textAlign = TextAlign::Center,
++    }));
+ 
+-    // Identity block.
+-    section->addChild(label("Version " + ctx.installedVersion, Style::fontSizeBody * scale, ColorRole::OnSurface));
+-    section->addChild(label(
+-        "Built on Noctalia " + ctx.noctaliaBaseVersion, Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
++    // ── Release & updates ────────────────────────────────────────────────────
++    Flex* updateCard = addSettingsCard(*page, "Release & updates", scale);
++    updateCard->addChild(label(
++        ctx.installedVersion, Style::fontSizeBody * scale, ColorRole::OnSurface, FontWeight::Bold
+     ));
+-    section->addChild(label(
+-        "Independent project, MIT licensed. Noctalia (MIT) attribution preserved; "
+-        "no Caelestia code or assets used.",
++    updateCard->addChild(label(
++        "Built on Noctalia " + ctx.noctaliaBaseVersion + " \u00b7 MIT licensed",
+         Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
+     ));
+ 
+-    section->addChild(ui::separator({}));
+-
+-    // Update check.
+     const bool canCheck = !ctx.offlineMode && !ctx.updateInFlight && static_cast<bool>(ctx.onCheckForUpdates);
+-    section->addChild(
++    updateCard->addChild(
+         ui::button({
+             .text = ctx.updateInFlight ? std::string("Checking\u2026") : std::string("Check for updates"),
+             .enabled = canCheck,
+@@ -117,22 +144,71 @@ namespace settings {
+     );
+ 
+     if (ctx.offlineMode) {
+-      section->addChild(label(
++      updateCard->addChild(label(
+           "Update checks are disabled while offline mode is on.", Style::fontSizeCaption * scale,
+           ColorRole::OnSurfaceVariant
+       ));
+     } else if (!ctx.updateStatusText.empty()) {
+-      section->addChild(label(
++      updateCard->addChild(label(
+           ctx.updateStatusText, Style::fontSizeBody * scale,
+           ctx.updateIsError ? ColorRole::Error : ColorRole::Secondary
+       ));
+     } else {
+-      section->addChild(label(
++      updateCard->addChild(label(
+           "Checks GitHub for the newest stable CaeliGlow release. Installing an update is always "
+           "a separate, explicit step \u2014 this never changes anything on its own.",
+           Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
+       ));
+     }
++
++    // ── What CaeliGlow adds (patch summary) ──────────────────────────────────
++    Flex* featureCard = addSettingsCard(*page, "What CaeliGlow adds", scale);
++    const std::vector<std::string> features = {
++        "Hover any bar widget to open its panel \u2014 a glowing reveal on dwell that closes when you leave.",
++        "The bottom edge reveals the launcher; the right edge opens the CaeliGlow power pill.",
++        "An animated launcher avatar and a consistent CaeliGlow accent across the shell.",
++        "This native Settings About page with private, one-request update checks.",
++    };
++    for (const std::string& feature : features) {
++      featureCard->addChild(label("\u2022  " + feature, Style::fontSizeBody * scale, ColorRole::OnSurface));
++    }
++
++    // ── Project links ────────────────────────────────────────────────────────
++    Flex* linkCard = addSettingsCard(*page, "Project links", scale);
++    auto linksRowCol = ui::row({
++        .align = FlexAlign::Start,
++        .gap = Style::spaceSm * scale,
++        .fillWidth = true,
++    });
++    Flex* links = linksRowCol.get();
++    const auto addLink = [&](std::string text, std::string url) {
++      links->addChild(ui::button({
++          .text = std::move(text),
++          .variant = ButtonVariant::Ghost,
++          .radius = Style::scaledRadiusMd(scale),
++          .onClick = [target = std::move(url)] { net::openInBrowser(target); },
++      }));
++    };
++    addLink("GitHub repository", repoUrl);
++    addLink("Releases", projectReleasesUrl);
++    addLink("Report an issue", projectIssuesUrl);
++    linkCard->addChild(std::move(linksRowCol));
++    linkCard->addChild(label(
++        repoOwner + "/" + repoName + " on GitHub", Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
++    ));
++
++    // ── Credits & license ────────────────────────────────────────────────────
++    Flex* creditCard = addSettingsCard(*page, "Credits & license", scale);
++    creditCard->addChild(label(
++        "CaeliGlow is an independent, MIT-licensed project. It preserves Noctalia's MIT "
++        "attribution and re-implements its visual concept from scratch \u2014 no Caelestia code "
++        "or assets are used.",
++        Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
++    ));
++    creditCard->addChild(label(
++        "Powered by Noctalia \u00b7 CachyOS \u00b7 Hyprland", Style::fontSizeCaption * scale,
++        ColorRole::OnSurfaceVariant
++    ));
+   }
+ 
+ } // namespace settings
+-- 
+2.56.0
+

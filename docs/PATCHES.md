@@ -21,6 +21,9 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
 ---
 
 ## 0001 — Bar hover: Caelestia-style scale "pop"
+- **Superseded in 1.3.0 by [0005](#0005--bar-hover-opens-the-widgets-panel-replaces-0001-pop)**:
+  the icon-zoom "pop" is removed and replaced by hover-to-open-panel. This patch is kept
+  in the series history for honest provenance; its `setScale()` pop is reverted by 0005.
 - **Files:** `src/shell/bar/bar.cpp`
 - **What:** extends `Bar::animateWidgetHoverHighlight()` so the hovered widget's
   layout-bounds node gets a render-only `setScale()` "pop" toward the pointer,
@@ -139,6 +142,76 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
   0001→0002→0003→0004 (binary GIF included) verified to apply cleanly onto a pristine
   v5.3.0 via `git am --3way`. Not desktop-tested here (a second shell over the live
   Hyprland session was intentionally avoided).
+
+---
+
+## 0005 — Bar hover opens the widget's panel (replaces 0001 pop)
+- **Files:** `src/shell/bar/bar.{h,cpp}`, `src/shell/bar/bar_instance.h`,
+  `src/shell/bar/widget.{h,cpp}`, `src/shell/panel/panel_manager.h`
+- **What:** hovering a bar widget now **opens that widget's own panel** using Noctalia's
+  native attached-reveal animation, and closes it when the pointer leaves (after a short
+  grace so you can travel into the panel). The old `setScale()` icon "pop" from 0001 is
+  removed (`kWidgetHoverPopScale` deleted).
+- **Generic by construction:** the reveal is keyed entirely off each widget's already
+  resolved left-click gesture. `Widget::boundHoverPanel()` reads `Gesture::Left`; if it is
+  an anchored-panel verb (`isAnchoredPanelVerb`) it returns the target `panelId`+`context`,
+  and `Widget::hoverOpenBoundPanel()` opens it. So built-in, user-added and plugin widgets
+  all follow the same rule with **zero per-widget code**, and widgets whose left-click is
+  not a panel toggle (caffeine, theme, etc.) or per-item widgets without a whole-widget
+  binding (workspaces, taskbar, tray) correctly do nothing on hover.
+- **Dwell + close-watch state machine (`Bar`):** `handleWidgetHoverReveal()` (called from
+  the bar hover-change callback) starts a one-shot **140 ms dwell** timer before opening,
+  so a fast pass-through the bar doesn't fire panels. `beginHoverRevealCloseWatch()` runs
+  a **170 ms repeating** guard that keeps the panel while the pointer is on the revealed
+  widget *or* inside the panel (`PanelManager::isPointerInsidePanel()`), and otherwise
+  closes it. `Bar::clearHoverReveal()` tears the state down.
+- **Conflict arbitration:** `hoverRevealPanelId` records *ownership* — the hover flow only
+  ever auto-closes the panel it opened, never a click- or edge-opened one. Layered on
+  PanelManager's single-active-panel model (opening B closes A), this keeps widget-hover,
+  bottom-edge launcher and right-edge power from stacking into a mess: exactly one reveal
+  is active at a time.
+- **Status:** **compiled + regression-tested** (`meson test` 153/153) and **nested-
+  session smoke-tested** (shell starts and runs stable; hover wiring live).
+
+## 0006 — CaeliGlow right-edge power pill + on-by-default edges + animated core
+- **Files:** `src/caeliglow/animated_image.{h,cpp}` (new),
+  `src/shell/session/caeliglow_power_panel.{h,cpp}` (new),
+  `src/shell/hot_corners/hot_corners.cpp`, `src/config/config_types.h`,
+  `src/config/schema/config_schema.cpp`, `src/app/application_services.cpp`,
+  `src/app/application_ui.cpp`, `meson.build`,
+  `assets/caeliglow/logo-panel-idle.gif`, `assets/caeliglow/logo-panel-hover.gif` (new)
+- **What:** a new shell action `caeliglow_power` opens a center-right floating session
+  pill (Logout · Power · animated logo · Lock · Restart) with the native confirm countdown
+  on destructive entries. `AnimatedImage` is a reusable idle→hover GIF driver (load per
+  slot, attach/detach to an `Image`, advance on frame tick) shared by the pill and the
+  launcher avatar.
+- **On by default:** `HotCornersConfig.enabled` defaults to `true`, with
+  `rightEdge.action = "caeliglow_power"` and `bottomEdge.action = "launcher"`; other
+  corners stay inert (`Corner.action` default `"none"`). The original `"power"` action
+  (native SessionPanel) is preserved for anyone who sets it explicitly.
+- **Registration:** the pill panel is registered in `application_ui.cpp` under
+  `"caeliglow:power"`; `application_services.cpp` dispatches `"caeliglow_power"` to it.
+  `config_schema.cpp` documents/validates the right-edge actions.
+- **Status:** **compiled + regression-tested** (153/153) and nested-session smoke-tested.
+
+## 0007 — Animated launcher avatar + full branded About page
+- **Files:** `src/shell/launcher/launcher_panel.{h,cpp}`, `assets/translations/en.json`,
+  `src/shell/settings/settings_content_about.cpp`
+- **Launcher:** when no personal avatar is set, the launcher shows the CaeliGlow crescent
+  mark via `AnimatedImage` (idle→hover), driven from `onFrameTick`; a real avatar takes
+  over and the loop detaches on close. Search moves to the **top** and the provider prefix
+  becomes `>` (defaults set in `config_types.h` under 0006).
+- **About page:** `addSettingsCaeliGlowAbout` is expanded from two lines in a box into a
+  full native page: a centered **animated-logo hero** (name, tagline, version) using the
+  existing `SettingsWindow::attachAboutLogo` GIF machinery, a **Release & updates** card
+  (version, base version, live Check-for-updates + status), a **What CaeliGlow adds**
+  summary, a **Project links** card (repository / releases / report-an-issue opened via
+  `net::openInBrowser`), and a **Credits & license** block — all built from native Settings
+  widgets (`addSettingsCard`, `ui::column/row/label/button/image`).
+- **Safety:** links are the fixed `mockifylab/CaeliGlow` GitHub URLs from `caeliglow/meta.hpp`;
+  the update check is unchanged (single unauthenticated GET, plain-text result, offline-mode
+  gated).
+- **Status:** **compiled + regression-tested** (153/153) and nested-session smoke-tested.
 
 ---
 
