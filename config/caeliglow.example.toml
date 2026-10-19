@@ -7,11 +7,16 @@
 #   * Right edge ........... hover + dwell opens the CaeliGlow power pill
 #   * Settings > About ..... animated branded page with a live update check
 #
-# Everything below is OPTIONAL tuning. All of it is additive: merge into your existing
-# Noctalia TOML config (do NOT replace the whole file — keep your bar, theme, widgets).
+# Everything below is OPTIONAL tuning. Since 1.4.0 CaeliGlow keeps its configuration in
+# its OWN namespace — merge these blocks into CaeliGlow's own config (do NOT replace the
+# whole file — keep your bar, theme, widgets).
 # With these blocks absent you get the defaults above; override any value to change it.
 #
-# How to find your config:  noctalia --print-config-path   (typical: ~/.config/noctalia/config.toml)
+# Where CaeliGlow's config lives (patch 0008):
+#   ~/.config/caeliglow/config.toml            (print with: noctalia --print-config-path)
+#   ~/.local/state/caeliglow/                  (settings.toml, state.toml, plugin data)
+#   override roots with CAELIGLOW_CONFIG_HOME / CAELIGLOW_STATE_HOME / CAELIGLOW_DATA_HOME
+# Your ~/.config/noctalia is never read or written by CaeliGlow.
 
 # --- Edge triggers (patches 0002 + 0003 + 0006) --------------------------------------
 # Reuse Noctalia's built-in HotCorners dwell mechanism: move the pointer to the edge,

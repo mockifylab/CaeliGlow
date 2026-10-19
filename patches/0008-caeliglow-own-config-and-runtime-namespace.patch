@@ -1,0 +1,349 @@
+From f0eb8a441b4efb2e197438dc958f2b2fd4fc8705 Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 12:28:42 +0500
+Subject: [PATCH] caeliglow: own config/state/cache/socket namespace by default
+
+CaeliGlow previously read and wrote the stock Noctalia user directories
+(~/.config/noctalia, ~/.local/state/noctalia, runtime sockets), so it
+behaved like a re-skinned Noctalia instead of its own product. Every
+persistent and runtime path now defaults to the caeliglow namespace:
+
+- FileUtils::configDir/stateDir/dataDir resolve to ~/.config/caeliglow,
+  ~/.local/state/caeliglow and ~/.local/share/caeliglow. New
+  CAELIGLOW_CONFIG_HOME / CAELIGLOW_STATE_HOME / CAELIGLOW_DATA_HOME
+  overrides; the legacy NOCTALIA_*_HOME vars still work as an explicit
+  escape hatch, and tests that pin them keep passing.
+- IPC socket, single-instance lock and dmenu socket use caeliglow-* so
+  CaeliGlow can run beside a live stock Noctalia without talking to (or
+  blocking) it.
+- Log file moves to $XDG_CACHE_HOME/caeliglow/caeliglow.log; calendar
+  cache to caeliglow/calendar.
+- config replay (support reports) reconstructs the caeliglow layout.
+
+With a fresh ~/.config/caeliglow the shell starts on CaeliGlow compiled-in
+defaults (hover-to-open panels, power pill, launcher avatar). No stock
+Noctalia file is ever read, migrated, or overwritten.
+---
+ src/app/single_instance_lock.cpp           |  4 ++-
+ src/calendar/calendar_service.cpp          |  3 +-
+ src/config/cli.cpp                         |  8 ++++--
+ src/core/log.cpp                           |  8 +++---
+ src/ipc/ipc_client.cpp                     |  4 ++-
+ src/ipc/ipc_service.cpp                    |  3 +-
+ src/launcher/dmenu_socket_path.cpp         |  2 +-
+ src/theme/theme_service.h                  |  2 +-
+ src/util/file_utils.h                      | 33 ++++++++++++++++------
+ tests/capsule_group_lane_override_test.cpp |  4 +--
+ tests/config_override_mutation_test.cpp    |  2 +-
+ tests/ipc_service_test.cpp                 |  2 +-
+ tests/log_test.cpp                         |  8 +++---
+ 13 files changed, 54 insertions(+), 29 deletions(-)
+
+diff --git a/src/app/single_instance_lock.cpp b/src/app/single_instance_lock.cpp
+index d7eaaaeb7..235aecb69 100644
+--- a/src/app/single_instance_lock.cpp
++++ b/src/app/single_instance_lock.cpp
+@@ -62,5 +62,7 @@ std::string SingleInstanceLock::resolveLockPath() {
+   if (display == nullptr || display[0] == '\0') {
+     display = "wayland-0";
+   }
+-  return std::string(runtime) + "/noctalia-" + display + ".lock";
++  // CaeliGlow lock namespace: a stock Noctalia instance on the same display must
++  // not block (or be blocked by) CaeliGlow.
++  return std::string(runtime) + "/caeliglow-" + display + ".lock";
+ }
+diff --git a/src/calendar/calendar_service.cpp b/src/calendar/calendar_service.cpp
+index 54650c2d9..635f42cf4 100644
+--- a/src/calendar/calendar_service.cpp
++++ b/src/calendar/calendar_service.cpp
+@@ -1340,7 +1340,8 @@ std::filesystem::path CalendarService::cacheFilePath() {
+   } else {
+     base = "/tmp";
+   }
+-  return base / "noctalia" / "calendar" / "events.enc";
++  // CaeliGlow cache namespace: never shares the stock Noctalia calendar cache.
++  return base / "caeliglow" / "calendar" / "events.enc";
+ }
+ 
+ std::filesystem::path CalendarService::legacyCacheFilePath() {
+diff --git a/src/config/cli.cpp b/src/config/cli.cpp
+index de2d58a24..88bccee6b 100644
+--- a/src/config/cli.cpp
++++ b/src/config/cli.cpp
+@@ -208,8 +208,10 @@ namespace noctalia::config {
+ 
+       const std::filesystem::path configHome = target / "config-home";
+       const std::filesystem::path stateHome = target / "state-home";
+-      const std::filesystem::path configDir = configHome / "noctalia";
+-      const std::filesystem::path stateDir = stateHome / "noctalia";
++      // CaeliGlow namespace: matches FileUtils::configDir()/stateDir() under the
++      // CAELIGLOW_*_HOME overrides printed in the replay hint below.
++      const std::filesystem::path configDir = configHome / "caeliglow";
++      const std::filesystem::path stateDir = stateHome / "caeliglow";
+ 
+       if (options.force) {
+         std::error_code ec;
+@@ -312,7 +314,7 @@ namespace noctalia::config {
+       std::println();
+       std::println("Run with:");
+       std::println(
+-          "  NOCTALIA_CONFIG_HOME={} NOCTALIA_STATE_HOME={} {}", StringUtils::shellQuote(configHome.string()),
++          "  CAELIGLOW_CONFIG_HOME={} CAELIGLOW_STATE_HOME={} {}", StringUtils::shellQuote(configHome.string()),
+           StringUtils::shellQuote(stateHome.string()), StringUtils::shellQuote(argv0)
+       );
+       return 0;
+diff --git a/src/core/log.cpp b/src/core/log.cpp
+index 5f77f3c1e..ae9f8c7c3 100644
+--- a/src/core/log.cpp
++++ b/src/core/log.cpp
+@@ -278,9 +278,9 @@ void initLogFile() {
+ 
+   std::string dir;
+   if (cacheHome != nullptr && cacheHome[0] != '\0') {
+-    dir = std::string(cacheHome) + "/noctalia";
++    dir = std::string(cacheHome) + "/caeliglow";
+   } else if (home != nullptr && home[0] != '\0') {
+-    dir = std::string(home) + "/.cache/noctalia";
++    dir = std::string(home) + "/.cache/caeliglow";
+   } else {
+     return; // no writable location available
+   }
+@@ -291,8 +291,8 @@ void initLogFile() {
+     return;
+   }
+ 
+-  const std::string logPath = dir + "/noctalia.log";
+-  const std::string backupPath = dir + "/noctalia.log.1";
++  const std::string logPath = dir + "/caeliglow.log";
++  const std::string backupPath = dir + "/caeliglow.log.1";
+ 
+   std::scoped_lock lock(gLogMutex);
+   closeLogFileUnlocked();
+diff --git a/src/ipc/ipc_client.cpp b/src/ipc/ipc_client.cpp
+index a171a8fdc..a1623f852 100644
+--- a/src/ipc/ipc_client.cpp
++++ b/src/ipc/ipc_client.cpp
+@@ -25,7 +25,9 @@ namespace {
+     if (display == nullptr || display[0] == '\0') {
+       display = "wayland-0";
+     }
+-    return std::string(runtime) + "/noctalia-" + display + ".sock";
++    // CaeliGlow owns a separate socket so it never talks to (or fights with) a
++    // running stock Noctalia daemon on the same display.
++    return std::string(runtime) + "/caeliglow-" + display + ".sock";
+   }
+ 
+ } // namespace
+diff --git a/src/ipc/ipc_service.cpp b/src/ipc/ipc_service.cpp
+index dac676eeb..b81afbad9 100644
+--- a/src/ipc/ipc_service.cpp
++++ b/src/ipc/ipc_service.cpp
+@@ -322,5 +322,6 @@ std::string IpcService::resolveSocketPath() {
+   if (display == nullptr || display[0] == '\0') {
+     display = "wayland-0";
+   }
+-  return std::string(runtime) + "/noctalia-" + display + ".sock";
++  // CaeliGlow socket namespace: isolated from any stock Noctalia daemon.
++  return std::string(runtime) + "/caeliglow-" + display + ".sock";
+ }
+diff --git a/src/launcher/dmenu_socket_path.cpp b/src/launcher/dmenu_socket_path.cpp
+index a1f112294..246bf1e0c 100644
+--- a/src/launcher/dmenu_socket_path.cpp
++++ b/src/launcher/dmenu_socket_path.cpp
+@@ -15,7 +15,7 @@ namespace noctalia::launcher {
+       return {.path = {}, .error = "WAYLAND_DISPLAY is not set"};
+     }
+ 
+-    return {.path = std::string(runtime) + "/noctalia-dmenu-" + display + ".sock", .error = {}};
++    return {.path = std::string(runtime) + "/caeliglow-dmenu-" + display + ".sock", .error = {}};
+   }
+ 
+ } // namespace noctalia::launcher
+diff --git a/src/theme/theme_service.h b/src/theme/theme_service.h
+index eb2a3b80f..ec209a96a 100644
+--- a/src/theme/theme_service.h
++++ b/src/theme/theme_service.h
+@@ -58,7 +58,7 @@ namespace noctalia::theme {
+ 
+     void registerIpc(IpcService& ipc);
+ 
+-    // Writes the current wallpaper-generated palette to ~/.config/noctalia/palettes/
++    // Writes the current wallpaper-generated palette to ~/.config/caeliglow/palettes/
+     // and switches palette source to custom.
+     [[nodiscard]] bool saveWallpaperPaletteAsCustom(std::string* paletteNameOut, std::string* errorOut = nullptr);
+ 
+diff --git a/src/util/file_utils.h b/src/util/file_utils.h
+index 17dec1b79..ca422e19c 100644
+--- a/src/util/file_utils.h
++++ b/src/util/file_utils.h
+@@ -372,50 +372,67 @@ namespace FileUtils {
+     return text;
+   }
+ 
++  // CaeliGlow keeps its configuration in its own namespace so it never reads or
++  // writes a stock Noctalia user's directories. CAELIGLOW_CONFIG_HOME overrides the
++  // parent; the legacy NOCTALIA_CONFIG_HOME still works as an explicit escape hatch.
+   [[nodiscard]] inline std::string configDir() {
++    const char* caeliglow = std::getenv("CAELIGLOW_CONFIG_HOME");
++    if (caeliglow != nullptr && caeliglow[0] != '\0') {
++      return std::string(caeliglow) + "/caeliglow";
++    }
+     const char* noctalia = std::getenv("NOCTALIA_CONFIG_HOME");
+     if (noctalia != nullptr && noctalia[0] != '\0') {
+       return std::string(noctalia) + "/noctalia";
+     }
+     const char* xdg = std::getenv("XDG_CONFIG_HOME");
+     if (xdg != nullptr && xdg[0] != '\0') {
+-      return std::string(xdg) + "/noctalia";
++      return std::string(xdg) + "/caeliglow";
+     }
+     const char* home = std::getenv("HOME");
+     if (home != nullptr && home[0] != '\0') {
+-      return std::string(home) + "/.config/noctalia";
++      return std::string(home) + "/.config/caeliglow";
+     }
+     return {};
+   }
+ 
++  // CaeliGlow state (settings.toml, state.toml, plugin caches) lives under its own
++  // directory; see configDir() for the override precedence.
+   [[nodiscard]] inline std::string stateDir() {
++    const char* caeliglow = std::getenv("CAELIGLOW_STATE_HOME");
++    if (caeliglow != nullptr && caeliglow[0] != '\0') {
++      return std::string(caeliglow) + "/caeliglow";
++    }
+     const char* noctalia = std::getenv("NOCTALIA_STATE_HOME");
+     if (noctalia != nullptr && noctalia[0] != '\0') {
+       return std::string(noctalia) + "/noctalia";
+     }
+     const char* xdg = std::getenv("XDG_STATE_HOME");
+     if (xdg != nullptr && xdg[0] != '\0') {
+-      return std::string(xdg) + "/noctalia";
++      return std::string(xdg) + "/caeliglow";
+     }
+     const char* home = std::getenv("HOME");
+     if (home != nullptr && home[0] != '\0') {
+-      return std::string(home) + "/.local/state/noctalia";
++      return std::string(home) + "/.local/state/caeliglow";
+     }
+     return {};
+   }
+ 
+   [[nodiscard]] inline std::string dataDir() {
++    const char* caeliglow = std::getenv("CAELIGLOW_DATA_HOME");
++    if (caeliglow != nullptr && caeliglow[0] != '\0') {
++      return std::string(caeliglow) + "/caeliglow";
++    }
+     const char* noctalia = std::getenv("NOCTALIA_DATA_HOME");
+     if (noctalia != nullptr && noctalia[0] != '\0') {
+       return std::string(noctalia) + "/noctalia";
+     }
+     const char* xdg = std::getenv("XDG_DATA_HOME");
+     if (xdg != nullptr && xdg[0] != '\0') {
+-      return std::string(xdg) + "/noctalia";
++      return std::string(xdg) + "/caeliglow";
+     }
+     const char* home = std::getenv("HOME");
+     if (home != nullptr && home[0] != '\0') {
+-      return std::string(home) + "/.local/share/noctalia";
++      return std::string(home) + "/.local/share/caeliglow";
+     }
+     return {};
+   }
+@@ -441,8 +458,8 @@ namespace FileUtils {
+   }
+ 
+   // Persistent per-plugin data directory. Survives plugin updates (unlike the
+-  // materialized runtime dir) and honors the NOCTALIA_STATE_HOME override.
+-  // Caller is responsible for creating it. Empty if no state home resolves.
++  // materialized runtime dir) and honors the CAELIGLOW_STATE_HOME / NOCTALIA_STATE_HOME
++  // overrides. Caller is responsible for creating it. Empty if no state home resolves.
+   [[nodiscard]] inline std::string pluginDataDir(const std::string& pluginId) {
+     const std::string base = stateDir();
+     if (base.empty() || pluginId.empty()) {
+diff --git a/tests/capsule_group_lane_override_test.cpp b/tests/capsule_group_lane_override_test.cpp
+index bbb8069c8..798dbbe33 100644
+--- a/tests/capsule_group_lane_override_test.cpp
++++ b/tests/capsule_group_lane_override_test.cpp
+@@ -89,7 +89,7 @@ start = [ "clock", "group:g1" ]
+ id = "g1"
+ members = [ "network", "bluetooth" ]
+ )");
+-    std::filesystem::remove(root / "state" / "noctalia" / "settings.toml");
++    std::filesystem::remove(root / "state" / "caeliglow" / "settings.toml");
+     ConfigService config;
+ 
+     expect(
+@@ -133,7 +133,7 @@ members = [ "network", "bluetooth" ]
+ id = "g2"
+ members = [ "battery", "clock" ]
+ )");
+-    std::filesystem::remove(root / "state" / "noctalia" / "settings.toml");
++    std::filesystem::remove(root / "state" / "caeliglow" / "settings.toml");
+     ConfigService config;
+ 
+     BarCapsuleGroupStyle first;
+diff --git a/tests/config_override_mutation_test.cpp b/tests/config_override_mutation_test.cpp
+index 6900ce647..65e207623 100644
+--- a/tests/config_override_mutation_test.cpp
++++ b/tests/config_override_mutation_test.cpp
+@@ -130,7 +130,7 @@ int main() {
+   const std::filesystem::path overlayRoot = root / "overlay-case";
+   writeFile(overlayRoot / "config" / "noctalia" / "config.toml", "[dock]\nenabled = true\n");
+   writeFile(
+-      overlayRoot / "state" / "noctalia" / "settings.toml", "config_version = 14\n[dock]\nmonitors = [\"DP-1\"]\n"
++      overlayRoot / "state" / "caeliglow" / "settings.toml", "config_version = 14\n[dock]\nmonitors = [\"DP-1\"]\n"
+   );
+   ::setenv("NOCTALIA_CONFIG_HOME", (overlayRoot / "config").c_str(), 1);
+   ::setenv("XDG_STATE_HOME", (overlayRoot / "state").c_str(), 1);
+diff --git a/tests/ipc_service_test.cpp b/tests/ipc_service_test.cpp
+index d415e6592..1c77a19ef 100644
+--- a/tests/ipc_service_test.cpp
++++ b/tests/ipc_service_test.cpp
+@@ -184,7 +184,7 @@ int main() {
+   TEST_CHECK(updatedHelp.contains("Toggle a panel by id"));
+ 
+   TEST_CHECK(ipc.start());
+-  const auto socketPath = runtimeDir / ("noctalia-" + std::string(kWaylandDisplay) + ".sock");
++  const auto socketPath = runtimeDir / ("caeliglow-" + std::string(kWaylandDisplay) + ".sock");
+   TEST_CHECK(sendRaw(ipc, socketPath, "status line1\nline2\nline3") == "status:line1\nline2\nline3\n");
+   return 0;
+ }
+diff --git a/tests/log_test.cpp b/tests/log_test.cpp
+index d28ddc8dd..709cd2b98 100644
+--- a/tests/log_test.cpp
++++ b/tests/log_test.cpp
+@@ -70,7 +70,7 @@ namespace {
+     initLogFile();
+     logWarn("{}", std::string(10'000, 'x'));
+ 
+-    const auto logPath = cacheRoot / "noctalia" / "noctalia.log";
++    const auto logPath = cacheRoot / "caeliglow" / "caeliglow.log";
+     std::error_code ec;
+     const auto size = std::filesystem::file_size(logPath, ec);
+     bool ok = expect(!ec, "failed to stat capped log file");
+@@ -89,10 +89,10 @@ namespace {
+       return false;
+     }
+ 
+-    const auto logDir = cacheRoot / "noctalia";
++    const auto logDir = cacheRoot / "caeliglow";
+     std::filesystem::create_directories(logDir);
+ 
+-    const auto logPath = logDir / "noctalia.log";
++    const auto logPath = logDir / "caeliglow.log";
+     const std::size_t initialSize = kMaxLogBytes - 8;
+     {
+       std::ofstream out(logPath, std::ios::binary);
+@@ -109,7 +109,7 @@ namespace {
+     initLogFile();
+     logWarn("rotate-now");
+ 
+-    const auto backupPath = logDir / "noctalia.log.1";
++    const auto backupPath = logDir / "caeliglow.log.1";
+     std::error_code ec;
+     const auto backupSize = std::filesystem::file_size(backupPath, ec);
+     bool ok = expect(!ec, "missing rotated backup");
+-- 
+2.56.0
+

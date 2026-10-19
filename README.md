@@ -9,7 +9,7 @@
 
 **A polished, Noctalia-based desktop shell for CachyOS + Hyprland.**
 
-[![Version](https://img.shields.io/badge/version-1.3.0-8B7CF6?style=flat-square)](https://github.com/mockifylab/CaeliGlow/releases)
+[![Version](https://img.shields.io/badge/version-1.4.0-8B7CF6?style=flat-square)](https://github.com/mockifylab/CaeliGlow/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-4FE0C4?style=flat-square)](LICENSE)
 [![Built on Noctalia v5.3.0](https://img.shields.io/badge/built%20on-Noctalia%20v5.3.0-F5C86B?style=flat-square)](https://github.com/noctalia-dev/noctalia)
 [![Platform](https://img.shields.io/badge/CachyOS%20%C2%B7%20Hyprland%20%C2%B7%20Wayland-12172B?style=flat-square)](#supported-environment)
@@ -31,6 +31,7 @@ and setting exactly as upstream intended.
 
 - **Not a rewrite. Not a plugin.** A reviewed patch series on a pinned upstream → trivially auditable, trivially reversible.
 - **Visible by default.** The signature interactions are on out of the box via compiled-in defaults; every one is additive and overridable in config.
+- **Its own identity, its own files.** Since 1.4.0 CaeliGlow keeps config, state and runtime sockets in its **own `caeliglow` namespace** — it never reads or writes your Noctalia directories, and the two shells can run side by side.
 - **Respectful of your machine.** Builds and installs under `/usr/local`, never overwrites the distro `noctalia` package, never touches boot/EFI/partitions.
 - **Independently re-implemented.** Inspired by the *feel* of [Caelestia Shell](https://github.com/caelestia-dots/shell)'s edges/hover — with **zero** Caelestia code or assets copied (it's GPL-3.0). CaeliGlow is **MIT** and **unaffiliated**.
 
@@ -45,6 +46,7 @@ and setting exactly as upstream intended.
 | **Right edge** | A full-height right-edge strip (on by default) whose `caeliglow_power` action opens the floating, animated **CaeliGlow power pill** (Logout · Power · animated logo · Lock · Restart + confirm countdown). The native SessionPanel `power` action still works if you set it. Duplicate original power entries are hidden by default (restorable). | ✅ Compiled + `meson test` 153/153 |
 | **Settings › About** | A full **branded** native "CaeliGlow" page headed by the **animated crescent-moon mark**: hero + version, a live **Check for updates**, a "what CaeliGlow adds" summary, project links and attribution. | ✅ Compiled + `meson test` 153/153 |
 | **Launcher** | Search moves to the top and, with no personal avatar set, the launcher shows the **animated** CaeliGlow mark as its avatar (a real avatar takes over cleanly). | ✅ Compiled + `meson test` 153/153 |
+| **Own namespace** | Since 1.4.0: config in `~/.config/caeliglow/`, state in `~/.local/state/caeliglow/`, sockets/lock as `caeliglow-*`, log in `~/.cache/caeliglow/`. First run starts on CaeliGlow's own defaults; your `~/.config/noctalia` is never read or touched. | ✅ Compiled + `meson test` 153/153 |
 
 ## What it deliberately leaves unchanged
 
@@ -85,9 +87,10 @@ Full walkthrough: **[docs/BUILDING.md](docs/BUILDING.md)**.
 ## The new behaviors (on by default)
 
 CaeliGlow's signature interactions ship **enabled by compiled-in defaults** — a stock build
-shows them with no config. Everything below is **optional** tuning; merge these additive
-blocks into your existing Noctalia TOML config (`noctalia --print-config-path`), keeping the
-rest as-is. A complete, validated sample is in
+shows them with no config. CaeliGlow keeps its configuration in **its own namespace**
+(`~/.config/caeliglow/config.toml` — print with `noctalia --print-config-path`); everything
+below is **optional** tuning, merged into that file and keeping the rest as-is. Your
+`~/.config/noctalia` is never read or written. A complete, validated sample is in
 [`config/caeliglow.example.toml`](config/caeliglow.example.toml):
 
 ```toml
@@ -127,14 +130,14 @@ Per-patch rationale and safety notes: **[docs/PATCHES.md](docs/PATCHES.md)**.
 Honesty about what "done" means here:
 
 - **Reproducible build:** unmodified Noctalia v5.3.0 configures, builds and links a
-  working `noctalia`; CaeliGlow patches 0001–0007 rebuild and relink with no errors.
+  working `noctalia`; CaeliGlow patches 0001–0008 rebuild and relink with no errors.
 - **Regression suite:** full `meson test` → **153/153 OK, 0 fail** (includes config
   schema round-trip, CLI validate, override mutation — which exercise the new
   `hot_corners` fields).
 - **Logic unit tests:** version-comparison + update state machine compile and pass
   standalone (and in CI).
-- **Series integrity:** `0001→…→0007` apply cleanly onto a pristine v5.3.0 via
-  `git am --3way`.
+- **Series integrity:** `0001→…→0008` apply cleanly onto a pristine v5.3.0 via
+  `git am --3way`, reconstructing the tree byte-for-byte.
 - **Nested smoke test:** the patched shell starts and runs stable inside a nested Hyprland
   window with hover-to-open, edges, the power pill and the About page active — the host
   session is untouched.
@@ -189,7 +192,7 @@ Full text: **[docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)** · **[LICENSE](LICENSE
 
 <div align="center">
 
-**Version 1.3.0** · Developer **Aasif** · [github.com/mockifylab/CaeliGlow](https://github.com/mockifylab/CaeliGlow)
+**Version 1.4.0** · Developer **Aasif** · [github.com/mockifylab/CaeliGlow](https://github.com/mockifylab/CaeliGlow)
 
 *Made with care for the CachyOS + Hyprland community.*
 

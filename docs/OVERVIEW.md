@@ -61,6 +61,11 @@ Why this wins:
 - **Animated launcher avatar + Brand (1.1.0)** — the launcher carries the crescent mark as
   its avatar; the identity itself (static + animated logo, wordmark, cinematic hero) is
   original artwork generated from scripts in `scripts/`.
+- **Own config & runtime namespace (1.4.0)** — CaeliGlow is its own product, not a relabeled
+  session: config/state/data live under `~/.config/caeliglow/` (etc.), sockets are
+  `caeliglow-*`, logs are `~/.cache/caeliglow/`. First run starts on CaeliGlow's own
+  defaults; the user's Noctalia directories are never read or written, and the two shells
+  can run side by side without cross-talk.
 
 The signature interactions ship **enabled by compiled-in defaults**, so a stock CaeliGlow
 build shows them with no config; everything stays additive and overridable.
@@ -80,13 +85,13 @@ build shows them with no config; everything stays additive and overridable.
 ## Quality bar (current evidence)
 
 - Baseline Noctalia v5.3.0 builds and links a working binary.
-- Patches 0001–0007 rebuild + relink cleanly.
+- Patches 0001–0008 rebuild + relink cleanly.
 - `meson test` suite: **153/153 pass, 0 fail** (config schema/validate/override cover the
   new fields).
 - Standalone version/update logic tests: **all pass** (and wired into CI).
 - Nested Hyprland smoke test: shell starts and runs stable with hover-to-open, edges, the
   power pill and the About page active — host session untouched.
-- Full `0001→0007` series applies onto a pristine v5.3.0 via `git am --3way`.
+- Full `0001→0008` series applies onto a pristine v5.3.0 via `git am --3way`.
 - Example config validates against the patched binary.
 
 ## Positioning & identity

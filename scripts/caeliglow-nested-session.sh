@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CaeliGlow v1.3.0 test launcher.
+# CaeliGlow v1.4.0 test launcher.
 # Starts a nested Hyprland compositor in a window on your CURRENT desktop and
 # runs the patched CaeliGlow shell inside it. Fully isolated: your live
 # /usr/bin/noctalia keeps running untouched. Close the nested window (or the
@@ -29,7 +29,7 @@ export NOCTALIA_ASSETS_DIR="$TREE/assets"
 export CAELIGLOW_TEST=1
 
 mkdir -p "$HERE/test"
-echo ">> Starting nested Hyprland (CaeliGlow v1.3.0). Log: $LOG"
+echo ">> Starting nested Hyprland (CaeliGlow v1.4.0). Log: $LOG"
 echo ">> Assets dir: $NOCTALIA_ASSETS_DIR"
 # Hyprland 0.56+ removed the --nested flag: nesting is done by forcing the
 # wayland backend, which opens the compositor as a window under the host.

@@ -213,6 +213,32 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
   gated).
 - **Status:** **compiled + regression-tested** (153/153) and nested-session smoke-tested.
 
+## 0008 — Own config/state/cache/socket namespace (CaeliGlow by default)
+- **Files:** `src/util/file_utils.h`, `src/ipc/ipc_client.cpp`, `src/ipc/ipc_service.cpp`,
+  `src/app/single_instance_lock.cpp`, `src/launcher/dmenu_socket_path.cpp`, `src/core/log.cpp`,
+  `src/calendar/calendar_service.cpp`, `src/config/cli.cpp`, `src/theme/theme_service.h`,
+  `tests/log_test.cpp`, `tests/ipc_service_test.cpp`, `tests/capsule_group_lane_override_test.cpp`,
+  `tests/config_override_mutation_test.cpp`
+- **What & why:** before 1.4.0 CaeliGlow reused Noctalia's user directories, so it rendered
+  *the user's* Noctalia customization and behaved like "Noctalia with an About page". Now
+  `FileUtils::configDir/stateDir/dataDir` resolve `caeliglow` by default
+  (`~/.config/caeliglow`, `~/.local/state/caeliglow`, `~/.local/share/caeliglow`), with new
+  `CAELIGLOW_CONFIG_HOME` / `CAELIGLOW_STATE_HOME` / `CAELIGLOW_DATA_HOME` overrides; the
+  legacy `NOCTALIA_*_HOME` vars still work as an explicit escape hatch. A fresh install with
+  no `~/.config/caeliglow` starts on CaeliGlow's compiled-in defaults (ConfigService already
+  logs "no config files found, using defaults").
+- **Runtime isolation:** IPC socket, single-instance lock and dmenu socket renamed to
+  `caeliglow-*` under `$XDG_RUNTIME_DIR`, so CaeliGlow neither commands nor clashes with a
+  live stock Noctalia. Log moves to `$XDG_CACHE_HOME/caeliglow/caeliglow.log`; calendar
+  cache to `caeliglow/calendar`; `config replay` (support reports) reconstructs the new layout.
+- **Deliberately kept:** installed asset tree (`share/noctalia/assets`, matches meson
+  `install_subdir`), the binary name `noctalia`, PAM service + greeter staging names, pywalfox
+  compat socket, DBus/icon-prefix identifiers — renaming those would break system integration
+  with no isolation benefit. Nothing in this patch ever reads, migrates or writes the user's
+  Noctalia directories.
+- **Status:** **compiled + regression-tested** (153/153; path assertions updated in the
+  four affected tests).
+
 ---
 
 ## Notes on safety of the model

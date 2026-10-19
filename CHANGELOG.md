@@ -4,6 +4,34 @@ All notable changes to CaeliGlow are documented here. The format follows
 Keep-a-Changelog; CaeliGlow uses Semantic Versioning. CaeliGlow's version is read
 from the single canonical `VERSION` file.
 
+## [1.4.0] - 2026-10-19
+
+CaeliGlow gets its own home: configuration, state and runtime live in a dedicated
+`caeliglow` namespace instead of borrowing Noctalia's directories.
+
+### Changed
+- **Own configuration namespace (patch 0008).** CaeliGlow now reads and writes
+  `~/.config/caeliglow/` (config), `~/.local/state/caeliglow/` (settings/state/plugin
+  data) and `~/.local/share/caeliglow/` (user data) by default — never your stock
+  Noctalia directories. On a first run the shell starts directly on CaeliGlow's own
+  compiled-in defaults (hover-to-open panels, power pill, launcher avatar), so it is
+  CaeliGlow out of the box rather than "your Noctalia config, relabeled". The user's
+  `~/.config/noctalia` is never read, migrated, or modified.
+- **Own runtime sockets.** The IPC socket, single-instance lock and dmenu socket are
+  named `caeliglow-*` under `$XDG_RUNTIME_DIR`, so CaeliGlow can run side-by-side with
+  a live stock Noctalia without talking to (or being blocked by) it.
+- **Own log and caches.** Log file: `$XDG_CACHE_HOME/caeliglow/caeliglow.log`;
+  calendar cache: `$XDG_CACHE_HOME/caeliglow/calendar/`.
+- New environment overrides `CAELIGLOW_CONFIG_HOME` / `CAELIGLOW_STATE_HOME` /
+  `CAELIGLOW_DATA_HOME` (legacy `NOCTALIA_*_HOME` still honored as an explicit
+  escape hatch). Support-report replay (`config replay`) reconstructs the new layout.
+
+### Verified in this release
+- Full debug rebuild + link clean; `meson test` **153/153 pass, 0 fail** (updated
+  path assertions in log / ipc / config-override tests).
+- Series `0001→0008` applies cleanly onto a pristine v5.3.0 via `git am --3way`,
+  reconstructing the developed tree byte-for-byte.
+
 ## [1.3.0] - 2026-10-19
 
 Interactions you can actually see, on by default.

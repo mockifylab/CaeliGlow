@@ -31,16 +31,21 @@ sudo ./scripts/install.sh release /usr/local
 
 ## Before any change: back up your config
 
+Since 1.4.0 CaeliGlow keeps its configuration in **its own namespace** — your stock
+Noctalia directories are never read or written. Back up what CaeliGlow owns:
+
 ```sh
-cp -a ~/.config/noctalia ~/.config/noctalia.bak.$(date +%F-%H%M%S)
+cp -a ~/.config/caeliglow ~/.config/caeliglow.bak.$(date +%F-%H%M%S) 2>/dev/null || true
+cp -a ~/.local/state/caeliglow ~/.local/state/caeliglow.bak.$(date +%F-%H%M%S) 2>/dev/null || true
 ```
 
 Restore with:
 ```sh
-rm -rf ~/.config/noctalia && mv ~/.config/noctalia.bak.<stamp> ~/.config/noctalia
+rm -rf ~/.config/caeliglow && mv ~/.config/caeliglow.bak.<stamp> ~/.config/caeliglow
 ```
 (CaeliGlow does not rewrite your `settings.toml`/`state.toml` unless you enable an
-edge-hover feature; these backups let you undo safely.)
+edge-hover feature; these backups let you undo safely. `~/.config/noctalia` belongs to
+your Noctalia install and CaeliGlow leaves it completely alone.)
 
 ## Roll back to ordinary Noctalia
 
