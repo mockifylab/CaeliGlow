@@ -8,3 +8,10 @@
 0006-caeliglow-power-pill-on-by-default-edges.patch
 0007-caeliglow-launcher-avatar-and-branded-about.patch
 0008-caeliglow-own-config-and-runtime-namespace.patch
+0009-caeliglow-dock-the-launcher-to-the-bottom-bar-edge-t.patch
+0010-caeliglow-make-edge-hot-corner-triggers-open-only-wi.patch
+0011-caeliglow-add-caeliglow-config-section-with-motion-s.patch
+0012-caeliglow-dock-right-edge-panels-with-concave-corner.patch
+0013-caeliglow-add-a-CaeliGlow-section-to-Settings-with-m.patch
+0014-caeliglow-brand-every-user-facing-string-and-the-lau.patch
+0015-caeliglow-About-update-now-installs-the-new-release-.patch

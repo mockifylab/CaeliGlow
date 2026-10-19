@@ -9,7 +9,7 @@
 
 **A polished, Noctalia-based desktop shell for CachyOS + Hyprland.**
 
-[![Version](https://img.shields.io/badge/version-1.4.0-8B7CF6?style=flat-square)](https://github.com/mockifylab/CaeliGlow/releases)
+[![Version](https://img.shields.io/badge/version-1.5.0-8B7CF6?style=flat-square)](https://github.com/mockifylab/CaeliGlow/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-4FE0C4?style=flat-square)](LICENSE)
 [![Built on Noctalia v5.3.0](https://img.shields.io/badge/built%20on-Noctalia%20v5.3.0-F5C86B?style=flat-square)](https://github.com/noctalia-dev/noctalia)
 [![Platform](https://img.shields.io/badge/CachyOS%20%C2%B7%20Hyprland%20%C2%B7%20Wayland-12172B?style=flat-square)](#supported-environment)
@@ -42,10 +42,12 @@ and setting exactly as upstream intended.
 | Area | What you get | Verification |
 |------|--------------|--------------|
 | **Bar hover** | Hovering **any** bar widget opens *that widget's* panel with Noctalia's native reveal animation, and it closes when you leave. Driven from each widget's own left-click gesture, so built-in, user and plugin widgets all follow the same rule (per-item widgets stay inert). The old icon-zoom is gone. | ✅ Compiled + `meson test` 153/153 + nested smoke |
-| **Bottom edge** | A wide, centered bottom-edge strip (on by default); hover + dwell reveals the **existing** Noctalia launcher. | ✅ Compiled + config-tested |
-| **Right edge** | A full-height right-edge strip (on by default) whose `caeliglow_power` action opens the floating, animated **CaeliGlow power pill** (Logout · Power · animated logo · Lock · Restart + confirm countdown). The native SessionPanel `power` action still works if you set it. Duplicate original power entries are hidden by default (restorable). | ✅ Compiled + `meson test` 153/153 |
+| **Bottom edge** | A wide, centered bottom-edge strip (on by default); hover + dwell reveals the launcher — since 1.5.0 **docked flush to the bottom edge with concave screen-edge corners**, no more floating panel. | ✅ Compiled + config-tested |
+| **Right edge** | A full-height right-edge strip (on by default) whose `caeliglow_power` action opens the **CaeliGlow power pill** (Logout · Power · animated logo · Lock · Restart + confirm countdown) — since 1.5.0 **docked to the screen edge (left or right, configurable) with matching concave corners**. The native SessionPanel `power` action still works if you set it. Duplicate original power entries are hidden by default (restorable). | ✅ Compiled + `meson test` 153/153 |
+| **Spring motion & CaeliGlow settings** | Since 1.5.0 panels open with fluid spring easing and a squash-and-stretch pulse — **Classic · Soft · Fizzy · Morphy**, with duration/elasticity/hover-open controls in a dedicated **Settings › CaeliGlow** section (theme-aware, same UI as global settings). All also tunable in `[caeliglow]` config. | ✅ Compiled + `meson test` 153/153 |
 | **Settings › About** | A full **branded** native "CaeliGlow" page headed by the **animated crescent-moon mark**: hero + version, a live **Check for updates**, a "what CaeliGlow adds" summary, project links and attribution. | ✅ Compiled + `meson test` 153/153 |
-| **Launcher** | Search moves to the top and, with no personal avatar set, the launcher shows the **animated** CaeliGlow mark as its avatar (a real avatar takes over cleanly). | ✅ Compiled + `meson test` 153/153 |
+| **Launcher** | Search moves to the top and, with no personal avatar set, the launcher shows the **animated** CaeliGlow mark as its avatar (a real avatar takes over cleanly). Since 1.5.0 the settings button is the **animated CaeliGlow logo** and every user-facing string reads CaeliGlow, not Noctalia. | ✅ Compiled + `meson test` 153/153 |
+| **In-place updates** | Since 1.5.0, Settings › About → **"Install vX now"** runs the quick-install in a terminal and replaces the running CaeliGlow with the new release — settings and state kept. | ✅ Compiled + `meson test` 153/153 |
 | **Own namespace** | Since 1.4.0: config in `~/.config/caeliglow/`, state in `~/.local/state/caeliglow/`, sockets/lock as `caeliglow-*`, log in `~/.cache/caeliglow/`. First run starts on CaeliGlow's own defaults; your `~/.config/noctalia` is never read or touched. | ✅ Compiled + `meson test` 153/153 |
 
 ## What it deliberately leaves unchanged
@@ -163,13 +165,13 @@ Per-patch rationale and safety notes: **[docs/PATCHES.md](docs/PATCHES.md)**.
 Honesty about what "done" means here:
 
 - **Reproducible build:** unmodified Noctalia v5.3.0 configures, builds and links a
-  working `noctalia`; CaeliGlow patches 0001–0008 rebuild and relink with no errors.
+  working `noctalia`; CaeliGlow patches 0001–0015 rebuild and relink with no errors.
 - **Regression suite:** full `meson test` → **153/153 OK, 0 fail** (includes config
   schema round-trip, CLI validate, override mutation — which exercise the new
   `hot_corners` fields).
 - **Logic unit tests:** version-comparison + update state machine compile and pass
   standalone (and in CI).
-- **Series integrity:** `0001→…→0008` apply cleanly onto a pristine v5.3.0 via
+- **Series integrity:** `0001→…→0015` apply cleanly onto a pristine v5.3.0 via
   `git am --3way`, reconstructing the tree byte-for-byte.
 - **Nested smoke test:** the patched shell starts and runs stable inside a nested Hyprland
   window with hover-to-open, edges, the power pill and the About page active — the host
@@ -225,7 +227,7 @@ Full text: **[docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)** · **[LICENSE](LICENSE
 
 <div align="center">
 
-**Version 1.4.0** · Developer **Aasif** · [github.com/mockifylab/CaeliGlow](https://github.com/mockifylab/CaeliGlow)
+**Version 1.5.0** · Developer **Aasif** · [github.com/mockifylab/CaeliGlow](https://github.com/mockifylab/CaeliGlow)
 
 *Made with care for the CachyOS + Hyprland community.*
 

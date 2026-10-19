@@ -1,0 +1,1104 @@
+From e05f6fb78da50359c4e15a85abacb577e6836f8b Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 15:50:10 +0500
+Subject: [PATCH] caeliglow: brand every user-facing string and the launcher
+ settings entry
+
+The launcher toolbar settings button now shows the animated CaeliGlow
+logo (gear glyph kept only as decode-failure fallback). User-facing
+Noctalia wording across notifications, window titles, settings copy,
+and translations becomes CaeliGlow; identifiers (app id, palette keys,
+noctalia.dev URLs, greeter commands/env vars) intentionally stay.
+---
+ assets/caeliglow/logo.png                     | Bin 0 -> 8431 bytes
+ assets/translations/en.json                   |  50 ++++-----
+ src/app/application_ipc.cpp                   |   2 +-
+ src/app/application_services.cpp              |  10 +-
+ src/app/application_ui.cpp                    |  26 ++---
+ src/capture/screenshot_service.cpp            |   4 +-
+ src/config/config_service.cpp                 |   4 +-
+ src/launcher/plugin_launcher_provider.cpp     |   6 +-
+ src/scripting/luau_host.cpp                   |   8 +-
+ src/scripting/plugin_manager.cpp              |   6 +-
+ src/scripting/plugin_service_host.cpp         |   6 +-
+ src/scripting/script_runtime.cpp              |   6 +-
+ src/shell/bar/widgets/plugin_widget.cpp       |   4 +-
+ src/shell/control_center/plugin_shortcut.cpp  |   6 +-
+ src/shell/control_center/tabs/home_tab.cpp    |   2 +-
+ .../desktop/widgets/plugin_desktop_widget.cpp |   4 +-
+ src/shell/launcher/launcher_panel.cpp         |  97 ++++++++++++++----
+ src/shell/launcher/launcher_panel.h           |   9 ++
+ src/shell/panel/plugin_panel.cpp              |   4 +-
+ src/shell/session/session_action_runner.cpp   |   4 +-
+ src/system/internal_app_metadata.cpp          |   6 +-
+ src/wayland/toplevel_surface.cpp              |   2 +-
+ src/wayland/toplevel_surface.h                |   2 +-
+ 23 files changed, 166 insertions(+), 102 deletions(-)
+ create mode 100644 assets/caeliglow/logo.png
+
+diff --git a/assets/caeliglow/logo.png b/assets/caeliglow/logo.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..d8aac8babffed0d7ed981bb35b22bdf63f040c60
+GIT binary patch
+literal 8431
+zcmeAS@N?(olHy`uVBq!ia0y~yU}ykg4mJh`hQoG=rx_R+6p}rHd>I(3)EF2VS{N99
+zf#hE>Fq9fFFuY1&V6d9Oz#v{QXIG#N0|NtFlDE4H0~q{t-d)eYz`$PO>Fdh=ic6SF
+zk85g>cmV?ggKCLuL`h0wNvc(HQEFmIDua=Mk(sWcfv%xth=HY*p@EgLiMD}(m4QJm
+zk4YhlhTQy=%(P0}8h8SG&N47CXuxeK$;?eHE=kNSK-ObuU}a)vWoQ7gr2FsA=L`(;
+z=RI8<Ln>~)om;&jHoW$}{r>y6p2x&`?qll8IsNTKvb02-fzOJ?d`4>}O`4f^aBi%)
+zu|R^`dLpw}kLQ6|OtaFIp18DK%S_d<u-JCS;zo<%g^*GMW3{s6)4c+v89^r!oZtRh
+z8?@%N_TB39H?#l#Iv)4?&2h`;ulBv)`K&Je+nmk!`|s!fy_c;UagZx)LzC#51XgV{
+z=7&q|I$xP}*y28~zAmn>!zXzC^VRx4&Gr$m++#~ry#F#3A6$KZ!}9-rf-YP3r0N!E
+z&0v@&FIqpJJuc?e_ed_CY&MODDU;4LbT`y0tUJQMAh(0>$F-pSM}iU}4G&bV|L>D(
+z+ak7#*I^yYJ+>{s=FDPR&sr(!vQnX`W46iX>J1-G=y#gEIpkpMF!zCK&N+^(%$&dB
+z%(J`hHkAmP1atmuI$^9-)xPW5zX$5>x<8iI-Bms4VC2AmXg&Ki*TT0A{tVHsTh^W4
+zEGj7Q^39|*TbcD(tEB=(FYa!L6}zPH=*LC=b+NCm#|iPMFkgAl5PKl?fQ!nvm66_l
+zOZ0ZRZau=^<Z&sHA@KW@)(x^hG*4JWM7)|FoyEh${3YY-?1pS5<`|ASGvB``db&jC
+z)9WMGEB44S-h4f4wfv{IAH#0){fTe4-*sjE{uBugHVwggjtce-Qa6}l0%byXl*S$r
+zUnv;Jp!@oda>qON-)SD|f*0en7ERxnvh2O(`rB83uAjwliA9egkNI5Rx~S(rH-*JK
+z5ARgkzeO(E=7hwFz|v0ko2+-{%5Qc0!_=(6$a18iyHUDvbJyFC{VEezJl(viabAY-
+z6#u>En`MtQ%dFk?Py5716`p`Cb<&JCbH)6`FMdusy<Xw^<E_1cXP&Q)eR!AoK;47D
+zGgh<1qw37XrZN`A=8JJG-0SGFz4Ha1pyW%tT{`DJ`wG=_&AtEeb)d_VR53ocNAiry
+zE#LH0d+K*Zn6PO?|6J88$Z@-&R%ume@DiUJmmZfM|E7F#@|;LD*Sm_1{mnLVf1XSd
+zy!Zc${ntD1&i(x`$>w}W1efT7w7Tsco0!*h|JZpy&aLN8==GD)`xIUY6n<y8-nB#B
+zIYa-U`dYiHKe7?bDUN#^HZ7H}{V14VzJd2fK>d`sU;AeN@H~0-bm#hpKdyW9bSCaw
+zzpdsr%bOl;^G2C--+3mfL>O=esM*~}<9OaUkM9jbmQ{Qa+sifLd9^q9UtjllQEvgu
+z4t=97x_dXK&ldPDc!59dwPM1*?o>4i5uGhu9-BDk)d)SAv@1XU#qTB0E_p7!Dt^RY
+zsrbnwd43ztH>~@1UXkDYCCJ**z9Ty=x+dGYf^{4JEUSnNHVft*zDHsOIKw`@-Tmj=
+zn|Re}^IunA7yP-(bEf6I9{H~em;Re@T9o?`!}GoWjAulu{hCnhx+KzeQMl0ha1Zm&
+zE$5>5Y774t_^{LCk682L=h4ePJD-TMbJ)TA<I#exb<buqo?17rBZr|}(;&ufnZVbt
+z0(rKr(U-mkZ5L#ySflfez2(Qx&+_L=_MMlnQ21*9`6cU>O_j<QZ`=-Fy5(8n|5wf-
+zI)68r3*@rARr;q<P^|M*ied5ku1V$rh0N*Mf937(SkK#-c6tBo&ztpHxGubS^;Sc8
+zf6|eQ`Wu8xYv!E{zJ4>ViLqLVnP-m2+QfbH^Y1<8`h19C>9zQ8pWR>lczg9j?)r$j
+zgW6H&UX<1|7BYR(xv}DA!n8u&3G@Fyi}=O%A@#w*pF3XEcs2AM_|0X%-(6?^yFaya
+zZ(PcK^Hg0)DOu@V+=Sx?ejMNb`-D@?i^c;-zIO|m$_F`|XVmMT{jT*x!p|9@`@b#U
+zyzBfNi3Q8P>$Ch*3HwlT{L@R-Z=aJtIq`QU?T^npAltk1ue<n<-~3!s2iT6*aJ;?j
+zb=yDqs&R7XZ{q`NlJ9@kWQ=kAll5<(+_|M`!W~(rToE#&YybPT_MiXs``Ci6|CPts
+z9yA=>d0^G0Z?Adm)IMB}F#UQYC*MGxM<F4+Ysc#DX)(H2Ui3XZetFf#KkH75t(&i;
+z)b3!%FT?s!{@?Gbm#cO>?RsF_!ISt+J8j#(ZNEb{JA5#c>7V(vwq%?7zF)l60-gb}
+zsY-d=FP6m}owc{-_n#gA{(d=i<oykv{-c}LZB$)+O6ky<4FYinn{T^5nd#MLk}Yz6
+z#?7}MXGGpl_Y-nBqMDH2WfJ!N#?9p^tCw89de#5b`rCnu6FJ=)(?6%2|6lWCm8+6-
+z+u!-J?{9s(c%J9{t0-f~OBpg>@5L`)m8ST{V6#rAnpM{hYmS$CF~$@6&i|7ut~q9$
+zB>4Q<r(<zR_W3U(b@u;u3hiGg^g~i)fBnVc-v_IkzAI*$d|PtQUYt2Qp^iWA>e(fa
+z7v7GZC7HIA$!l*B^UOx0katyAegEXl&Ukl^^J|O$Ifbti^4GA{dAYcYzdro^VCw<i
+z1DT%-)=o}3J3G%Q#8Zm5X18sYVvViZzHP}5U;pR~oRlbVe3toLlh?n`xH9Fi+?##$
+z*Y4z>Q(k}F_2~yI*Q4ic39-2uHGaqW`D-%__tmn;@68ly5Ps~oJ9qu0HRYGi9w_cE
+z{C{V={l5=>0+mcZvY!8Ln_`+jYwr8_V?7cI@)?R{OZFIasa#*JAE$V1ss6|ACO*y5
+zKN?*2i@gM%X+3||QL1cZRAw_rj!C#dym5W)&ZEEA=bbxz)xU4&mJgE?^@I+j9(h0Y
+zgyxYN-TM2Ep>ML?nNrR;y{vjAxKTCa|E0X!@6v+px;}=4UEUGWZ}fjgFR#L)cUpma
+zm&J?ut2mlyzWnp)q@LXLke<Vb+9vdA30z#<@rG$<{YGoU+P9~5W0X{Q4NHr56&p=a
+zDau-``Foc0rb@XyLxCB&G7oYUW*0TDi&-5W&*dTifB&ui^%h|cPb3P|Z>&*{-Rzq4
+zH2dt0S2E94Id`;dRmu^4xYc|0lxO^x!x)z~PUAVTW^q>ho<o<?t(5kMKku{oKYulg
+zNtwjciTi8+FRGJxe&9h!W3ASwRWUPK8xof&6}&g!RPe?1ePQvw`$36jW(}uvwq*In
+z3*LA+^UzzRy1hrm8y9c7xTEA$+0|8kyo+C_9@-P~ra^KQL-hQw&kFNjUb}lYa?h@H
+z@74BQSyfX#rTuymTX*B{eQzb@#H2cXcz8SWO<FD~IXiDEu87$7{P^=p36@E>gcO8Q
+zWly9oNEe&B>&uDz-r@&;cm7^v=dk#7_`{ROl7jy4%NK9)k;*CHoF17VyS32c%#D;|
+z=L95r_fD9eTbFc8$YDvNhjNF?WLaf@<LvrfN8U%h|M4s8+wWqZV~5VWzI-04wog)7
+zDJS?T+w=|lE(*+Yc3M1B*VDP6@AKT``C6~%Hn;EFY*Tt@%_D}5`f=-RmoD;uxr+0J
+z>mRR|<)Ysit~2@Te=-jgEL(l5Pi10|Z*pOS<OP8<T~ZxSyD~i+uIJwB&teWV*PPWd
+z+5IaQ^ZLi%0<ZpWwZ5_T@n#FB&#XE&dXFw0{UMN+aIDHWufT7cYG;oMZ^jW-P2HbW
+zi%(XSz7c*{b7IMXqRA|m&6!-yx^|p)DTysta<^V<DgJz`Vbvy?vVALNE16Gt?>$E?
+z+hxm1ez}VGO?54Y?;D4$6`IuYFfCXw*CfSxbEHy*arCT@=9x~D8nm)QZ>~D!e%45>
+z;ptMov_(w!CLRCR?YlSH_G(1kzJ(jOFUTF~fBZ8u@4N0Bcb(UN9xSv}Is0tF9B!7g
+z6(ZvD_WTvk{8Jfgbo_)F=NGXWBpo|`wjzk-|Aq1%?z-9!i(QQq88n6Wm+RQy5BGn0
+zY+C;U+a%VR;uqJO<Q!DgJ9uW3VONOdVb#df=bP=n?pvkU@T;e=i9OWgcFde*dtzGN
+z9(dgSS7`H5ABh8>?(O}%sH*kebiZyjsb1FRE9_-CDc>4(=Ix)q{a?o0_j$gzUY=F7
+z^l#Z*{7AjGXTzeS`F(Rf*!}b3N;5gT<3M#D%eS@!cR7n0z0Q>nk8WPKC%V9=n{gL=
+zu7{SaWtHo<O%eObqW>Qa{l)Y5Sd&N7{#}bVsNQ~i=6rbS>{V|9rV376bM*O<a?fQ<
+zE}QSym{@i5Jh+?_f8k6+31@-{uii(^#dfLohbD%d{&6n8%7x81#m1M-BkT3L)7#(2
+za_ZD}&g8v&Yel~9x083G&tBg*hgU9-Ei=nPy^|w-NiMgi()6xP>n{qN<$M$4c0z^m
+zdPhsSD%*q=|BI{5TCZ&StC;fLv*E#8u0TJ-WbrofhZ(bO-MG75RIzvMZRz5Q%|8$G
+zJZ8AtICq!d`Ol1hqw7R|$NEeymq}F&Y2@MUtUN#SK<=s{y<;1S7wNs6p`M|#W!DK7
+z&tAqwECKwN&bgWMaIR?N4wU6s!L=&p$=<z!AJX1rnLT~i$r)Yox~y%+GM0j+2W@}3
+zeAQZ9apCa(>0Xr)e}CDYIvjj8(Kvha&qeGOCGT6+YtQM|=PmjiFB+x0_@Y3AcE9{~
+z-NT1B-Lky-MyTxy=PMN<oo)YaJo>y;hu7rUvOWF&nSo!}4d$<83gx);QR3RMNUsm~
+z><kUhsUFzusZ{MJ!@qd@d-=mJC0@7HpUcet*SYoVbIxhC)8lXc+TDDV;p>&$sS66N
+zZ>^Rtw+Ru9smz!z^l__*fR=Ih9<f8$*62UzNq(Ep7MFa}MR3uft4cR(m{vVd+PLLP
+z?ZTW7rDD?s_h0OJ`EWvKt-j>PtLeA*mQ{0^DsGFMa+byI`0>NVnWusslp@03s3eMh
+z5PtCQ=rjT21O{!@>{WAZPqn-$%{#v^PCIFTxZ%p%Je&9{QrdVX_$w4vrZ;=F-|+d^
+zy7+FCN5dVnj#meqwlM1)V>lJpbY)#|)cKjGdjyT`+<9u*gKG*}E?BUY6{j?~9^Im&
+z8`_=~Bzk%7qy8-SJ}cdj*_YM!b)0rOC$zM6m2hd0tiZ3OjK)jfwp-La5~+T7V`sJb
+zn%~R!dMC=CabTJfu6pd-@5nb>Kjc^Thy7-I_W!h`OV_Of64f&%24-yh|L6Oo7{{c8
+zWo(nrO)>hrE^XS@Pn+hi*DL<n@%xg=?ev8aMf?kj=3c7mINoWXbx7{aJR^@YAvGRv
+z{`ckX`Tu_Yo*y@~um5}Rs#qm?Ik{n8>)gAtj-P8=&%HOj5?x-tLF?nv^rnoq3V{lP
+z{Z0l_X@6KEWSQQ7XjJ4C(BaOVCF;WU^k{ScyxIDajh4+V5<=T9_<o5xdO?xfhRw#>
+zW{r6?$KsXht3s1^d{pw^`@!nor-R#dxh|fb(I_6Eo+6*@UwyqG<nEqNTVr%*-6)Qj
+zk@@hI|GHIcraxk+-<Q^V=aFst@|Amep2RFSld*ZNJCRTEYPj>Bog2lS$`v$x6_?zs
+z+;_wzt#Zedjce46?^*t=Db_9T@0+z`Wn{6(jyJDb-$z@>p0VLuu<m$I%+mvY-}fD=
+zTM@f@_0#m@8SMw3`KsP}vgF|$8`VRiiV+S^g5JMno8Oi7<=p46xxzPiOuX8>6i$eH
+zYZyAYbEWjlKG#0M<hXX4VTK_?nlj@rq4-sc>!)sRj14^G_ah?9YQIkn1817q%aEI&
+zX1nirZ$JOMPr$pK!p;XZKe${H5cqdU=k=F`TFS3B6}p?AH3^^hRhWOFzs8N}R~$Od
+z2uMC};P`#E!X!*+vdW=rZ<`J5-9<N_Vih^zy>n96#_Kbeu3mk0y8GWVwd%81sTIUd
+z+Hrc$tN2-G*XAF{&(V%ERcoHd**N>`n=JwscYV%r&pVsBlHsgV&-dReCp%g?FVS54
+zz%t`lonW8IY^Tkd%yY%&Wm;K$XY5vt**ZPL|5pXu*Mst_eHO>EEnOo%u{P~n%|*ka
+zcQ-!i9k0Frt;2vT=DLiK@na$5Je8+s{_OUd%E!0w6o=i?r?&iz^5Q2i9c=dbA!F>z
+zUVXsRR_#KgOYQyS6XjX+od2w^&EXPtoU61^{t#0g^JmQ!j}<<23s^Xua@#yvyrsmZ
+zQN-ziLJ61CG~ToW3}yC@$~?ENd9U|s#r8i{YaKMF$UOfkeDU6qaL1*ak2iRVK3sJF
+zmpsFr-)qg!{XDvT&*}*=?fcVxdZJff-8A1y{Z<CY*|cdd1g$#HHZiU#kX$TXp}_L3
+z`$L7_pQjgo%?ym(!DsvM&MRxzNy&e+nO+~cUUTeRj>~2n$txGXFMa)Ft)1T0MwO?z
+zTAMO=owo|ksajp|Xvf5D67%P5*nLa4dfC;cEpv6>hHcyODF0ShUP6Kn%e%fK_LJiC
+zcM8m(*>Nqt`gOfxAKRz9KW;0}k=DPp@~gh@mk6a5Wvca?!ruRCshO*#Rh01N$dhkd
+zSGRl2Df%FtKjS)o;d^tNUbTw;Rh!OR-khj%G$kxH_2JF;=O1nP(!WYi|IqUpTjPyH
+zKWZ!2Uwg$`^|EGpSJwOf=OLb({=Q3H&SPyXwnjdz<ZYA54dEu+>sdGL9FptyJO4Pt
+zVd8WkI_$&2SEi?p;|(t_4@+1v{eJwrf3dx<QeQb7P1UWJI&%K1L+6ht%9A=a)K&Fc
+z8OMB)Yu}~wRr}Bi$?}#1rFKs<cIR$U>n+ocj?!IxcboFP&Dtz|Rr_tC?KdYhBp;Zo
+z^vgx@(CLK_XI)gkbn$EHT>rc`nfl2_%KKKoyU!7mm3CO`km~e*kN4E~=)NzKeQc2X
+z`OFiG@@1OGi~i2n&&+BMKJTk_C)Z%xoHhTf(v~nyO1XMb;8LtoRo1lp_kB-;H-Fh0
+z_jmIDZx?<xJy2p^;i11(K<H|5yL9jKsC)i;SKM!Y(mTF=|1738N^f7u$)&SA{I)H{
+z>fzhzdUY-De;l^nz3pt8&O%8~hRp{)e5jhgJY#p#&s8@c@L39Oo&DpSre5LQBjN`$
+z>*D+$DHpV@x_9l{KUwa-jp}MlkA)AasWr`?V{j|?@b7a;_xODx>it$;&NM#oegF6M
+zf}S(x*r+L4U75STU)H`T_P*@Z(@fTv-u~=P(Y?P@<J<4kS6D1=Cu~*N^Lvy0$9Jde
+zwkX7#vQ^FdJ}=hp#zK>`GZtJm%G|1xxwWS}Zq|o$su_QU@9!52RBhRy_wCxPo`WBq
+ztu5;^p7*RXb(UUWyzG4WX3K(8KYtg+JFJwbo*Sln_g7r<>2kl_fByfP`}n8Y39-ln
+zI~ZDTo2wnVd+&3^ET>y(XR6=vHOjYdm{9({xAT4c?V0WeR8O`oxp+hH^nE*~IrAqk
+zpI-H%{pJrnwMloB7R9gNdwofJTD;ceX?foFr|SOI<d`pfe`T7EdW>qp+4IN!6qIsy
+z|55+^Z{z*?QsMbhnYUFcs;^bg_6e@G%e}qs+7j7W-=*iV9GAb>+3IjBPgzM>?9es~
+z`@<Z^%pP1W{8l<$e!hNi;<U%iPbQmnvCsLYA#k#1hmC;C_kDd^?MqjeubTQ-Yv+;!
+zbNA(~{j8|-<%iC-j1%)VK7QCLaD$IUFoREb-^=yq5*MUxyM3mNMLu2iwA|CA2Tuzv
+zZXREL`*4{X&xa4?_qh(R=GSvPV00|&JfSDJ_Q$iGtoOUuJuO)8=lVxOaf{QRHM_!D
+zLY_D+|E2C%%5Sji?Wg$#$HU`opMDnKoG+>7>(jMrPVl+^+iTBTn@PFd&aDpH<S8w4
+z;P?N8LN`ub<=pN5%w_DGznA&%_ZHs4@I%NzZuzCZhfdB&xb{$6^m|M3$yg<;xV!g!
+zBUZksb`6~vDX?G6`-a4G^;?4f{W~B3FJLx_XIpJPp*K%2JoWO;SDJtA4nMVS-%;~i
+zV6Eq2rvA1Aa}^DCiTv8n<Gi8LYr?rMM!8?FxdjBz_?%p(J9A0e%kVrUr$t_mHZ7gM
+zbpGq#bw|z{w=6YwUnI9j;6c~h{=%c*j_+D${qaP)pm9#c-ouA(D$GCfCw#*fHl144
+zYp<-$<2m_{RC0-@E_gA|qiw$Po#Pjdz3q@*8yd6yk<P09>^XD&UZ?8`DLi_)qWIm#
+z7ssxiob~#H&93X;9bG);C>QDpMJ?KQ{ZLxR_2P9x?lZ1g*s3*ciL>F}!Rx6fX5aTK
+z+3zp6-{s6+mwfNI%i^~LZXG=HUeJ7t`<+!2zFIK$G*1-spEmFNk{MfNeulsQV;#aG
+z&*b^&oxl%=^<UPxBpXQO*-orxnLCTIOKg7pnjGtrx$BD}T=%V5v|X}I;ZD_S%ei4|
+z^CW!zEblwLzI<=~4hj2vDq9#O51YPsz4P_QH$kt))jwxUE#7x=V$h=t$7b<fv-@{@
+zT3<ce=KV~0OQuYkmlsmt*OhWQU+(1k!qhMB=1-+fj(ytv;KG}Z`wRbz9MP{7a%Z_Y
+z`&Yq+nLDPf`mj9w|M4Fd+aj0z6m;CyTB38VSkZNQ0{8ZWZ{|DFto!`TtU7omJU+s2
+z*ZPxl&DTd(h0gQY_O*%{uULQ6=I?|LH7y%`9!!fUtd>@Nw0m;N%Snf}pTCxU<ox#U
+zN_E%vt}9SxwTypoEbZ{$MGx;dD`lScao};RJALR$eoFA!$j<k=+D~2AJKf25m;Dtm
+zXLd!x#$WT}&wp$$SIT=4p<~M)*%IS$zdL2x-twDHi>iViJ#S02f0S<4df0XLf~x&z
+z?s>$dDVLlpt(w+#=b7`49doVPX6Z_un?3WscHWE4vU4MwcV1;NFXAs)`e1&f$0J>a
+zXDPGKbn6Rde>LOU!$0w^U+R+i-P5=KxMMn{@1T2+#-+_VI__ejSM2nXw%zkMG%@Yb
+zcYgER>`e#dYd>gLgykPNWX7@EQ{C;%cAiqFVp+E$1(xmiTmP3IS<)F%t&rQ$dSH*C
+zgUU6I4Yyb32v6kwDxG;&_{GxO%T?-5E?5)4I7i<kMxpTEi4OtU>$i6{>&HKin*QhX
+z{-<*`_w~-mf4l8k_xsHk?sb?&t*JWdILWknZRwwmqkfFRtgXwq|NjWzwQc9-`t*4x
+z%<5-suXwgT{u4*9%g2KuuHQr_dmNws-nC{`=KWp10c~YMUQyQjYV77#n@pPW@Y$2c
+zov*%aj{AAYzkQbQ<Mo!0FD}lnd#qgb=;*Vz9eKjO|JYKjpUH1u7{1}z*Xw6*xA*c~
+z=(xQ9A5+D~&$?_Kg3q>2(0z8wdCv2Ef0OOWrT(1-CE_(NM2?iNGPIlUU3G$=!^+~b
+zQq8RkD(>3^yYO!bsx_GLX4jiv{3omJe#<xQa8r8qPwIwWhHYo`Q6|Ot;UDL6mp1QA
+zx;N?O{h!a)7k#X*n;~3!<;=T)&|;<CE=wkB3#?lBXii3~GM8(#!=opcEPthnb?<Ba
+zY3Ke*)w6b2VNT7AvRO3`zTf}r9KAQI=KP0SkIm;vST9w)@i>FosoQk@|HD83Zi-Y5
+zVXhEOt7myAYUpQgFjeKu=Qj`M2EFaR|JhmUobBWl_e9Uwx#fMB%44tl^8LDe_11m*
+z*F~?qZC$k4bDqkocl-x0`X%Pn=&sDqmB`vs*3-Z5%}(v_|30qG|1aKN_wRfE-oBG%
+zlhZD-txJy!lvGGqkP-Ly8h7c#h%Gw>Efkc*S7dCCdAign)V{&)$o0u<zH3+%DyjHo
+z>=1db=6R)Q;q|#QVydSHuXn46S~}57bJm{k_y2FU+`s?-&FLLKe?~v<P%Rfc?p|^7
+z7DMTbo0kuiEw3`Tbm~Q-@RW(AOqw0<lY~|}<;<P+qq66qtD0fUHvbtp>(dr(jZ(jT
+zc=w!N?2XJ#^CZ`tWioA>p}q0{t|P_q-;OqUF^DS8xLA;9TrjU=&N`*tt|?1ay<ht1
+zw6~_*h1FAR#D97%WU~70s-@*v<s#ty^x5R5d(3kf-U;tmn$z*`;q!RA*Wdev7BH2c
+zd#`)t`8-pxDZ2N+H_Dg)Tg`D+Me?KK8@6q(-&X{Qs>n8dQ>=^2zHq!wW3{MY)fE+q
+z1(o5Oe?69C+c#lFRU>=I*UlrNL9c@AYfe21P8ZyeQM58-`|^#GO4~bnu5|k6Ed1Ny
+z-=pc_|42MFqjW{Y8s`^=F}6QXq(5-k)A6Rr@BO7U=iX+DddBt}ef6&^JDXIykM(d+
+zNd~v#4Y}o;j<0OVdlb&?74zk%^^x$m&NXknYnK1*oFBjWVa%JhWqvMYi8dTE4ClTa
+z)Tmt5yz)$Xr)%xZ7_O8~xtk3q%>-|*oy2?H@95Ums~8tn@0IZmm^d$ga;VIAsogua
+z>|gS|SX6j^s?d((EB7ooT4Bz1=gAzIzQ+RM+qy*-cU?%nvdQttq=L_)x8=JxGRPX{
+zY!9}KbvbuB>nqpayWNad|Gg6vS6-F&n8xI$a@yxxb>Y=l|2ECiG@elw8=seH@?`fa
+z6YcNfM=X6>em9<);nsYL$6M{3-Is;)OXn#TW*tyH(94v*vTJe>XN0WYd5&-I?An66
+z*Y2ucI%9Uzk107_^PXE7K3`&76yeF#VYP>2cf)#j(cdN)<U-gaTKwLov90814^7!^
+zRco{>|Jv*yx5{lA`97v*JyI`ybo~)mq@lO{BW*qDeHL7tnpXDdca>sw<o@Oxa%^d2
+zJT{3pru_BV=OzFCzk6@vxA|ez*(0)EwL8Qj)^1?k(Y5J?_^&b*LBly$j!Wvi*N-{!
+z>0T9Q_5QA>Iev{vb&OuR@w?ky_Nn*%sZ~m2Vi#jJEP6P<_Gyk?&DZ~mUlWCXgyjU;
+zcb<RFq8Bo;SLttu{BJ=G+vvLVJ&i)jPo3k+m;yfDh<lhavBs%0%Vd+uIaMVaLGR<W
+zIw$S+T)AIrCE+ps*<$%Ru7<~N&6b<Y_H+H#c_MX{k>LEFAqlxllsk9LTWeN-a7kEL
+z*fga}>W4k_3g@Ivb`R}!2$2+iS{d52=J<uVKQC<fS=hYl`)LUd&I|n6QoMU+_Oq(R
+zpE|C2rmbt^+Rh}WrY|e)U;EbRu4>PEJ+;_4e5>=H7c-w^+8REN)8u&f=!NF#Jh`8Z
+zQy47m>U;y|YldpqZtmJ^78o?q#i8t(>dPsQnM{8#d=%#Oo=2&+gTE-EWp<K`0%P48
+z&h{<G!(;e#_kUjJ{g=V`pt@byms6*lb}zV@5E{;y-+gy+hDE!uX8Ob6(8{%4C69Pa
+zAIUS-&GA0c^F!2pz2>3vlc(<QE;ze<8vnu95n((5$Cuate{OqUxszwY;)yF}ZZw_$
+z`^L%{V#U{fuh{+m-1@~@DxTZt&tJZIy79r+5*gA7Y%?}JImYhn`mR?vVCwI)&;QS#
+zf37sHE8?0^!mb_v?(d0+eE<CQevwVp=+om!ljawC|MPz{$QJCL**O)o7{Sxk&t;uc
+GLK6TfsArV`
+
+literal 0
+HcmV?d00001
+
+diff --git a/assets/translations/en.json b/assets/translations/en.json
+index aa41d34b1..8e680e859 100644
+--- a/assets/translations/en.json
++++ b/assets/translations/en.json
+@@ -898,14 +898,14 @@
+       "calendar-reminder-open": "Open",
+       "calendar-reminder-untitled": "Untitled event",
+       "calendar-reminder-with-location": "{when}\n{location}",
+-      "config-migration-body": "Update {path} in the source file. Noctalia is applying this replacement only temporarily. Run noctalia config validate to list every required change.",
++      "config-migration-body": "Update {path} in the source file. CaeliGlow is applying this replacement only temporarily. Run caeliglow config validate to list every required change.",
+       "config-migration-title": "Configuration update needed",
+       "dbus-disabled": "DBus notifications disabled",
+       "desktop-widgets-editor": "Widget editor",
+       "desktop-widgets-editor-enabled": "Desktop widget editor is on. Switch to an empty workspace so open windows do not cover the editor.",
+-      "greeter-sync": "Noctalia Greeter",
++      "greeter-sync": "CaeliGlow Greeter",
+       "greeter-sync-pending": "Syncing appearance to the greeter. If an administrator prompt appears, approve it; passwordless authorization follows system policy.",
+-      "greeter-sync-pending-console": "Syncing appearance to the greeter. If authorization is required, approve the polkit prompt in Noctalia, on a TTY, or on a console.",
++      "greeter-sync-pending-console": "Syncing appearance to the greeter. If authorization is required, approve the polkit prompt in CaeliGlow, on a TTY, or on a console.",
+       "greeter-sync-pending-legacy": "Syncing through the authenticated legacy helper. Administrator approval is required.",
+       "greeter-sync-pending-manual": "Files are staged for authenticated legacy sync. Run the positional apply helper in a terminal, preserving NOCTALIA_GREETER_STATE_DIR if you use a custom path, or configure shell.greeter_sync.privilege_command and sync again.",
+       "greeter-sync-pending-manual-pkexec": "Syncing appearance to the greeter. If administrator authorization is required and no prompt appears, run in a terminal: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\".",
+@@ -913,7 +913,7 @@
+       "greeter-sync-timeout": "Greeter sync is still waiting for authorization. Check a TTY or console for a polkit prompt, enable the polkit agent in Security settings, or run pkexec manually.",
+       "greeter-sync-timeout-manual": "Authenticated legacy sync still needs administrator approval. Run the positional apply helper in a terminal and preserve NOCTALIA_GREETER_STATE_DIR if you use a custom path.",
+       "greeter-sync-timeout-manual-pkexec": "Greeter sync still needs authorization. Run in a terminal: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
+-      "keybind-app": "Noctalia",
++      "keybind-app": "CaeliGlow",
+       "keybind-invalid-modifier": "This shortcut accepts a single key without modifiers.",
+       "keybind-invalid-printable": "Printable keys (letters, numbers, symbols) require a modifier such as Ctrl or Alt.",
+       "keybind-invalid-super": "The Super/Windows key cannot be used in shell keybinds.",
+@@ -994,7 +994,7 @@
+     },
+     "enable-failed": {
+       "body-error": "{plugin}: {error}",
+-      "body-incompatible": "{plugin} targets plugin API {version}; this Noctalia supports API {oldest}–{current}.",
++      "body-incompatible": "{plugin} targets plugin API {version}; this CaeliGlow supports API {oldest}–{current}.",
+       "body-timeout": "{plugin} took too long to install.",
+       "title": "Plugin not enabled"
+     }
+@@ -1290,7 +1290,7 @@
+       },
+       "reset-page": "Failed to reset some settings.",
+       "support-report": "Failed to save support report.",
+-      "sync-greeter": "Could not sync appearance to Noctalia Greeter.",
++      "sync-greeter": "Could not sync appearance to CaeliGlow Greeter.",
+       "sync-greeter-timeout": "Greeter sync is still waiting for authorization. Check a TTY or console for a polkit prompt, enable the polkit agent in Security settings, or run pkexec manually.",
+       "sync-greeter-timeout-manual": "Authenticated legacy sync still needs administrator approval. Run the positional apply helper in a terminal and preserve NOCTALIA_GREETER_STATE_DIR if you use a custom path.",
+       "sync-greeter-timeout-manual-pkexec": "Greeter sync still needs authorization. Run in a terminal: pkexec noctalia-greeter-apply-appearance --sync \"/run/user/$(id -u)/noctalia-greeter-sync\"",
+@@ -1742,7 +1742,7 @@
+         "deprecated": "deprecated",
+         "empty": "No enabled plugins.",
+         "held-back": "older version",
+-        "held-back-hint": "v{version} needs plugin API {required}; this Noctalia supports up to {current}. Upgrade Noctalia to get it.",
++        "held-back-hint": "v{version} needs plugin API {required}; this CaeliGlow supports up to {current}. Upgrade CaeliGlow to get it.",
+         "incompatible-plugin-api": "incompatible plugin API",
+         "remove": "Remove plugin",
+         "requires": "Requires: {dependencies}",
+@@ -1775,8 +1775,8 @@
+         },
+         "kind-label": "Kind",
+         "location-label": "Location",
+-        "location-placeholder-git": "https://github.com/me/noctalia-plugins",
+-        "location-placeholder-path": "~/dev/noctalia-plugins",
++        "location-placeholder-git": "https://github.com/me/caeliglow-plugins",
++        "location-placeholder-path": "~/dev/caeliglow-plugins",
+         "name-label": "Source ID",
+         "name-placeholder": "my-plugins",
+         "precedence-hint": "Lower sources override higher ones when they offer the same plugin.",
+@@ -1786,15 +1786,15 @@
+         "update": "Update source"
+       },
+       "store": {
+-        "add": "Add to Noctalia",
++        "add": "Add to CaeliGlow",
+         "back-to-catalog": "Back to the plugin catalog",
+         "categories": "Categories",
+         "category-all": "All",
+         "empty": "No plugins found",
+         "held-back": "Older version",
+-        "held-back-hint": "Installs v{version} for plugin API {resolved}. The newest v{latest} needs plugin API {latestRequired}; this Noctalia supports up to {current}.",
++        "held-back-hint": "Installs v{version} for plugin API {resolved}. The newest v{latest} needs plugin API {latestRequired}; this CaeliGlow supports up to {current}.",
+         "incompatible": "Incompatible",
+-        "incompatible-hint": "Needs plugin API {required}; this Noctalia supports {oldest}–{current}.",
++        "incompatible-hint": "Needs plugin API {required}; this CaeliGlow supports {oldest}–{current}.",
+         "installed": "Installed",
+         "loading": "Loading catalog…",
+         "no-readme": "No description available.",
+@@ -1871,7 +1871,7 @@
+           "label": "Corner Roundness"
+         },
+         "custom-palette": {
+-          "description": "Choose a palette from ~/.config/noctalia/palettes/",
++          "description": "Choose a palette from ~/.config/caeliglow/palettes/",
+           "label": "Custom Palette",
+           "search-placeholder": "Search custom palettes…"
+         },
+@@ -1920,7 +1920,7 @@
+           "label": "Pure Black"
+         },
+         "shell-theme-mode": {
+-          "description": "Pin Noctalia's own light or dark mode; Follow keeps it in sync with Theme Mode",
++          "description": "Pin CaeliGlow's own light or dark mode; Follow keeps it in sync with Theme Mode",
+           "label": "Shell Theme Mode"
+         },
+         "show-close-buttons": {
+@@ -2378,7 +2378,7 @@
+             "label": "On Shutdown"
+           },
+           "started": {
+-            "description": "Command to run after Noctalia starts",
++            "description": "Command to run after CaeliGlow starts",
+             "label": "On Started"
+           },
+           "theme-mode-changed": {
+@@ -2783,7 +2783,7 @@
+           "label": "Show Session Button"
+         },
+         "launcher-show-settings-button": {
+-          "description": "Show a shortcut to Noctalia Settings",
++          "description": "Show a shortcut to CaeliGlow Settings",
+           "label": "Show Settings Button"
+         },
+         "launcher-sort-by-usage": {
+@@ -3275,9 +3275,9 @@
+           "label": "Keyboard Layout Labels"
+         },
+         "launch-apps-as-systemd-services": {
+-          "description": "Launches applications in separate systemd services so they don't share Noctalia's cgroup",
++          "description": "Launches applications in separate systemd services so they don't share CaeliGlow's cgroup",
+           "label": "Launch Apps as systemd Services",
+-          "requires-systemd-session": "Requires Noctalia to run as a systemd user service (uwsm or a systemd user unit)"
++          "requires-systemd-session": "Requires CaeliGlow to run as a systemd user service (uwsm or a systemd user unit)"
+         },
+         "launch-apps-custom-command": {
+           "description": "Wraps apps launched from the launcher, dock, and taskbar; substitutes $CMD with the original command",
+@@ -3520,8 +3520,8 @@
+         },
+         "sync-greeter": {
+           "button": "Sync Now",
+-          "description": "Copy the current appearance and monitor arrangement to Noctalia Greeter. Administrator approval is requested unless system policy authorizes passwordless sync for your user.",
+-          "label": "Noctalia Greeter"
++          "description": "Copy the current appearance and monitor arrangement to CaeliGlow Greeter. Administrator approval is requested unless system policy authorizes passwordless sync for your user.",
++          "label": "CaeliGlow Greeter"
+         },
+         "telemetry": {
+           "description": "Sends a small anonymous startup ping with version, OS, compositor, monitor resolutions, RAM, and UI scale",
+@@ -3905,7 +3905,7 @@
+             "label": "Set EasyEffects profile"
+           },
+           "greeter-sync": {
+-            "description": "Sync wallpaper, colors, and monitor layout to Noctalia Greeter",
++            "description": "Sync wallpaper, colors, and monitor layout to CaeliGlow Greeter",
+             "label": "Sync greeter appearance"
+           },
+           "keyboard-backlight-down": {
+@@ -4021,7 +4021,7 @@
+             "label": "Invoke latest notification action"
+           },
+           "notification-show": {
+-            "description": "Show an internal Noctalia notification",
++            "description": "Show an internal CaeliGlow notification",
+             "label": "Show a notification"
+           },
+           "osd-disable": {
+@@ -4964,8 +4964,8 @@
+       "export-config": "Export Config…",
+       "export-config-saved": "Config export saved.",
+       "filter-overridden": "Overridden",
+-      "legacy-config-warning": "Legacy setting: {issue}. Edit this source entry; Noctalia is applying the replacement only temporarily. Run noctalia config validate to list every required change.",
+-      "native-title": "Noctalia Settings",
++      "legacy-config-warning": "Legacy setting: {issue}. Edit this source entry; CaeliGlow is applying the replacement only temporarily. Run caeliglow config validate to list every required change.",
++      "native-title": "CaeliGlow Settings",
+       "no-results": "No settings found",
+       "no-results-hint": "Try a different setting name or config key.",
+       "offline-mode-notice": {
+@@ -5001,7 +5001,7 @@
+     "no-wallpaper-selected": "No wallpaper selected",
+     "select-wallpaper": "Select Wallpaper",
+     "subtitle": "A few quick choices to get you started.",
+-    "title": "Welcome to Noctalia",
++    "title": "Welcome to CaeliGlow",
+     "wallpaper": "Wallpaper",
+     "wallpaper-scheme": "Wallpaper Scheme"
+   },
+diff --git a/src/app/application_ipc.cpp b/src/app/application_ipc.cpp
+index a3023e815..4e816fa8b 100644
+--- a/src/app/application_ipc.cpp
++++ b/src/app/application_ipc.cpp
+@@ -264,7 +264,7 @@ void Application::initIpc() {
+       return "error: notification-show requires <summary> or <json-payload>\n";
+     }
+ 
+-    std::string appName = "Noctalia";
++    std::string appName = "CaeliGlow";
+     std::string summary;
+     std::string body;
+     Urgency urgency = Urgency::Normal;
+diff --git a/src/app/application_services.cpp b/src/app/application_services.cpp
+index d5d9ce8c2..9459d2882 100644
+--- a/src/app/application_services.cpp
++++ b/src/app/application_services.cpp
+@@ -213,7 +213,7 @@ void Application::syncNotificationDaemon() {
+         m_notificationPollSource.setDbusService(nullptr);
+         m_notificationDaemonInitFailed = true;
+         m_notificationManager.addInternal(
+-            "Noctalia", i18n::tr("notifications.internal.dbus-disabled"), kdeError.what(), Urgency::Low
++            "CaeliGlow", i18n::tr("notifications.internal.dbus-disabled"), kdeError.what(), Urgency::Low
+         );
+         return;
+       }
+@@ -224,7 +224,7 @@ void Application::syncNotificationDaemon() {
+     m_notificationPollSource.setDbusService(nullptr);
+     m_notificationDaemonInitFailed = true;
+     m_notificationManager.addInternal(
+-        "Noctalia", i18n::tr("notifications.internal.dbus-disabled"), ownerError.what(), Urgency::Low
++        "CaeliGlow", i18n::tr("notifications.internal.dbus-disabled"), ownerError.what(), Urgency::Low
+     );
+   }
+ }
+@@ -423,7 +423,7 @@ void Application::syncPolkitAgent() {
+       DeferredCall::callLater([this, error]() {
+         if (polkit_session::isNoSessionForPidError(error)) {
+           notify::error(
+-              "Noctalia", i18n::tr("notifications.internal.polkit-agent"),
++              "CaeliGlow", i18n::tr("notifications.internal.polkit-agent"),
+               i18n::tr("notifications.internal.polkit-no-session")
+           );
+         }
+@@ -534,7 +534,7 @@ void Application::initServices() {
+   // can now be reported with a translated message.
+   if (m_earlySessionBusError.has_value()) {
+     m_notificationManager.addInternal(
+-        "Noctalia", i18n::tr("notifications.internal.session-bus-unavailable"), *m_earlySessionBusError, Urgency::Low
++        "CaeliGlow", i18n::tr("notifications.internal.session-bus-unavailable"), *m_earlySessionBusError, Urgency::Low
+     );
+     m_earlySessionBusError.reset();
+   }
+@@ -1599,7 +1599,7 @@ void Application::initSessionBusServices() {
+       m_mprisService.reset();
+       m_lockScreen.setLoginBoxServices(&m_sessionActionRunner, nullptr, &m_weatherService, &m_httpClient);
+       m_notificationManager.addInternal(
+-          "Noctalia", i18n::tr("notifications.internal.mpris-disabled"), e.what(), Urgency::Low
++          "CaeliGlow", i18n::tr("notifications.internal.mpris-disabled"), e.what(), Urgency::Low
+       );
+     }
+ 
+diff --git a/src/app/application_ui.cpp b/src/app/application_ui.cpp
+index 684ec31f4..0d687665d 100644
+--- a/src/app/application_ui.cpp
++++ b/src/app/application_ui.cpp
+@@ -161,7 +161,7 @@ void Application::initUiRenderSurfacesAndSettings() {
+     m_desktopWidgetsController.toggleEdit();
+     if (!wasEditing && m_desktopWidgetsController.isEditing()) {
+       notify::info(
+-          "Noctalia", i18n::tr("notifications.internal.desktop-widgets-editor"),
++          "CaeliGlow", i18n::tr("notifications.internal.desktop-widgets-editor"),
+           i18n::tr("notifications.internal.desktop-widgets-editor-enabled")
+       );
+     }
+@@ -172,7 +172,7 @@ void Application::initUiRenderSurfacesAndSettings() {
+     }
+     if (m_lockScreen.isActive()) {
+       notify::info(
+-          "Noctalia", i18n::tr("notifications.internal.lockscreen-widgets-editor"),
++          "CaeliGlow", i18n::tr("notifications.internal.lockscreen-widgets-editor"),
+           i18n::tr("notifications.internal.lockscreen-widgets-editor-blocked-locked")
+       );
+       return;
+@@ -184,7 +184,7 @@ void Application::initUiRenderSurfacesAndSettings() {
+     m_lockscreenWidgetsController.toggleEdit();
+     if (!wasEditing && m_lockscreenWidgetsController.isEditing()) {
+       notify::info(
+-          "Noctalia", i18n::tr("notifications.internal.lockscreen-widgets-editor"),
++          "CaeliGlow", i18n::tr("notifications.internal.lockscreen-widgets-editor"),
+           i18n::tr("notifications.internal.lockscreen-widgets-editor-enabled")
+       );
+     }
+@@ -202,7 +202,7 @@ void Application::initUiRenderSurfacesAndSettings() {
+     m_settingsWindow.onExternalOptionsChanged();
+     m_settingsWindow.markSettingsWriteSuccess(true);
+     notify::info(
+-        "Noctalia", i18n::tr("notifications.internal.wallpaper-palette-export"),
++        "CaeliGlow", i18n::tr("notifications.internal.wallpaper-palette-export"),
+         i18n::tr("notifications.internal.wallpaper-palette-export-success", "name", paletteName)
+     );
+   });
+@@ -224,7 +224,7 @@ void Application::performGreeterSync(bool quiet) {
+       if (success) {
+         if (!quiet) {
+           notify::info(
+-              "Noctalia", i18n::tr("notifications.internal.greeter-sync"),
++              "CaeliGlow", i18n::tr("notifications.internal.greeter-sync"),
+               i18n::tr("notifications.internal.greeter-sync-success")
+           );
+         }
+@@ -232,7 +232,7 @@ void Application::performGreeterSync(bool quiet) {
+       }
+       if (quiet) {
+         notify::error(
+-            "Noctalia", i18n::tr("notifications.internal.greeter-sync"), i18n::tr("settings.errors.sync-greeter")
++            "CaeliGlow", i18n::tr("notifications.internal.greeter-sync"), i18n::tr("settings.errors.sync-greeter")
+         );
+       } else {
+         m_settingsWindow.markSettingsWriteError(i18n::tr("settings.errors.sync-greeter"));
+@@ -252,7 +252,7 @@ void Application::performGreeterSync(bool quiet) {
+   if (launch == greeter::GreeterSyncLaunch::Failed) {
+     if (quiet) {
+       notify::error(
+-          "Noctalia", i18n::tr("notifications.internal.greeter-sync"), i18n::tr("settings.errors.sync-greeter")
++          "CaeliGlow", i18n::tr("notifications.internal.greeter-sync"), i18n::tr("settings.errors.sync-greeter")
+       );
+     } else {
+       m_settingsWindow.markSettingsWriteError(i18n::tr("settings.errors.sync-greeter"));
+@@ -262,11 +262,11 @@ void Application::performGreeterSync(bool quiet) {
+   if (launch == greeter::GreeterSyncLaunch::StagedOnly) {
+     if (quiet) {
+       notify::error(
+-          "Noctalia", i18n::tr("notifications.internal.greeter-sync"), i18n::tr("settings.errors.sync-greeter")
++          "CaeliGlow", i18n::tr("notifications.internal.greeter-sync"), i18n::tr("settings.errors.sync-greeter")
+       );
+     } else {
+       notify::info(
+-          "Noctalia", i18n::tr("notifications.internal.greeter-sync"),
++          "CaeliGlow", i18n::tr("notifications.internal.greeter-sync"),
+           i18n::tr("notifications.internal.greeter-sync-pending-manual")
+       );
+     }
+@@ -285,7 +285,7 @@ void Application::performGreeterSync(bool quiet) {
+     } else if (!legacySync && !customPrivilege && !polkitAgentActive) {
+       pendingBodyKey = "notifications.internal.greeter-sync-pending-console";
+     }
+-    notify::info("Noctalia", i18n::tr("notifications.internal.greeter-sync"), i18n::tr(pendingBodyKey));
++    notify::info("CaeliGlow", i18n::tr("notifications.internal.greeter-sync"), i18n::tr(pendingBodyKey));
+   }
+ 
+   if (!quiet) {
+@@ -299,7 +299,7 @@ void Application::performGreeterSync(bool quiet) {
+           return;
+         }
+         notify::error(
+-            "Noctalia", i18n::tr("notifications.internal.greeter-sync"),
++            "CaeliGlow", i18n::tr("notifications.internal.greeter-sync"),
+             i18n::tr(
+                 inSessionPolkit  ? "notifications.internal.greeter-sync-timeout"
+                     : legacySync ? "notifications.internal.greeter-sync-timeout-manual"
+@@ -680,14 +680,14 @@ void Application::initPanelManagerAndPanels() {
+       m_launcherPanel->clearUsage();
+     }
+     notify::info(
+-        "Noctalia", i18n::tr("notifications.internal.launcher-usage-reset"),
++        "CaeliGlow", i18n::tr("notifications.internal.launcher-usage-reset"),
+         i18n::tr("notifications.internal.launcher-usage-reset-success")
+     );
+   });
+   m_settingsWindow.setResetScreenTime([this]() {
+     m_screenTimeService.clearAll();
+     notify::info(
+-        "Noctalia", i18n::tr("notifications.internal.screen-time-reset"),
++        "CaeliGlow", i18n::tr("notifications.internal.screen-time-reset"),
+         i18n::tr("notifications.internal.screen-time-reset-success")
+     );
+   });
+diff --git a/src/capture/screenshot_service.cpp b/src/capture/screenshot_service.cpp
+index 62b39b4aa..fb24259b1 100644
+--- a/src/capture/screenshot_service.cpp
++++ b/src/capture/screenshot_service.cpp
+@@ -1883,11 +1883,11 @@ ScreenshotService::makeScreenshotPath(const OutputOptions& options, const std::s
+ }
+ 
+ void ScreenshotService::notifySaved(const std::filesystem::path& path) {
+-  m_notifications.addInternal("Noctalia", "Screenshot saved", path.string());
++  m_notifications.addInternal("CaeliGlow", "Screenshot saved", path.string());
+ }
+ 
+ void ScreenshotService::notifyError(const std::string& message) {
+-  m_notifications.addInternal("Noctalia", "Screenshot failed", message, Urgency::Critical);
++  m_notifications.addInternal("CaeliGlow", "Screenshot failed", message, Urgency::Critical);
+ }
+ 
+ void ScreenshotService::setSoundPlayer(SoundPlayer* soundPlayer) { m_soundPlayer = soundPlayer; }
+diff --git a/src/config/config_service.cpp b/src/config/config_service.cpp
+index 808ddb33d..2c09d9c79 100644
+--- a/src/config/config_service.cpp
++++ b/src/config/config_service.cpp
+@@ -1290,7 +1290,7 @@ void ConfigService::setConfigParseError(ConfigProblem problem) {
+   std::string title = located ? problem.origin.shortFormat(m_configDir) : std::string("Config error");
+   std::string body = located ? "Error: " + problem.message : std::move(problem.message);
+   m_configErrorNotificationId =
+-      m_notificationManager->addInternal("Noctalia", std::move(title), std::move(body), Urgency::Critical, 0);
++      m_notificationManager->addInternal("CaeliGlow", std::move(title), std::move(body), Urgency::Critical, 0);
+ }
+ 
+ void ConfigService::updateLegacyConfigIssues(noctalia::config::LegacyConfigIssues issues) {
+@@ -1356,7 +1356,7 @@ void ConfigService::notifyLegacyConfigIssues() {
+   std::string title = issue.origin.valid() ? issue.origin.shortFormat(m_configDir)
+                                            : i18n::tr("notifications.internal.config-migration-title");
+   (void)m_notificationManager->addInternal(
+-      "Noctalia", std::move(title),
++      "CaeliGlow", std::move(title),
+       i18n::tr("notifications.internal.config-migration-body", "path", issue.path + ": " + issue.message),
+       Urgency::Normal
+   );
+diff --git a/src/launcher/plugin_launcher_provider.cpp b/src/launcher/plugin_launcher_provider.cpp
+index 47b213fb0..d07c621a8 100644
+--- a/src/launcher/plugin_launcher_provider.cpp
++++ b/src/launcher/plugin_launcher_provider.cpp
+@@ -138,12 +138,12 @@ void PluginLauncherProvider::reloadScript() {
+   auto name = m_sourcePath.filename().string();
+   if (code.empty()) {
+     kLog.warn("launcher provider '{}': failed to reload '{}'", m_entryId, m_sourcePath.string());
+-    notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++    notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+     return;
+   }
+   if (m_runtime == nullptr) {
+     kLog.warn("launcher provider '{}': runtime unavailable for reload", m_entryId);
+-    notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++    notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+     return;
+   }
+ 
+@@ -154,7 +154,7 @@ void PluginLauncherProvider::reloadScript() {
+     m_onResultsChanged();
+   }
+   kLog.info("hot reload: reloaded launcher provider '{}'", m_entryId);
+-  notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);
++  notify::info("CaeliGlow", i18n::tr("bar.widgets.scripted.reloaded"), name);
+ }
+ 
+ std::string PluginLauncherProvider::buildProviderInput(std::string_view sub) const {
+diff --git a/src/scripting/luau_host.cpp b/src/scripting/luau_host.cpp
+index 200f4f87f..769392eb0 100644
+--- a/src/scripting/luau_host.cpp
++++ b/src/scripting/luau_host.cpp
+@@ -801,7 +801,7 @@ namespace {
+     if (auto* host = hostForState(L)) {
+       host->scriptNotifyInfo(title, body);
+     } else {
+-      notify::info("Noctalia", title, body);
++      notify::info("CaeliGlow", title, body);
+     }
+     return 0;
+   }
+@@ -812,7 +812,7 @@ namespace {
+     if (auto* host = hostForState(L)) {
+       host->scriptNotifyError(title, body);
+     } else {
+-      notify::error("Noctalia", title, body);
++      notify::error("CaeliGlow", title, body);
+     }
+     return 0;
+   }
+@@ -2735,7 +2735,7 @@ void LuauHost::scriptNotifyInfo(std::string title, std::string body) {
+     );
+     return;
+   }
+-  notify::info("Noctalia", title, body);
++  notify::info("CaeliGlow", title, body);
+ }
+ 
+ void LuauHost::scriptNotifyError(std::string title, std::string body) {
+@@ -2745,7 +2745,7 @@ void LuauHost::scriptNotifyError(std::string title, std::string body) {
+     );
+     return;
+   }
+-  notify::error("Noctalia", title, body);
++  notify::error("CaeliGlow", title, body);
+ }
+ 
+ bool LuauHost::scriptLoadSound(std::string name, std::string path, int callbackRef) {
+diff --git a/src/scripting/plugin_manager.cpp b/src/scripting/plugin_manager.cpp
+index c6011e15c..475f50372 100644
+--- a/src/scripting/plugin_manager.cpp
++++ b/src/scripting/plugin_manager.cpp
+@@ -550,7 +550,7 @@ namespace scripting {
+               kOldestSupportedPluginApiVersion, kCurrentPluginApiVersion
+           );
+           notify::error(
+-              "Noctalia", i18n::tr("plugins.enable-failed.title"),
++              "CaeliGlow", i18n::tr("plugins.enable-failed.title"),
+               i18n::tr(
+                   "plugins.enable-failed.body-incompatible", "plugin", id, "version", pluginApiVersion, "oldest",
+                   kOldestSupportedPluginApiVersion, "current", kCurrentPluginApiVersion
+@@ -559,14 +559,14 @@ namespace scripting {
+         } else if (timedOut) {
+           kLog.warn("cannot enable '{}': export timed out", id);
+           notify::error(
+-              "Noctalia", i18n::tr("plugins.enable-failed.title"),
++              "CaeliGlow", i18n::tr("plugins.enable-failed.title"),
+               i18n::tr("plugins.enable-failed.body-timeout", "plugin", id)
+           );
+         } else {
+           const std::string reason = error.empty() ? "export failed" : error;
+           kLog.warn("cannot enable '{}': {}", id, reason);
+           notify::error(
+-              "Noctalia", i18n::tr("plugins.enable-failed.title"),
++              "CaeliGlow", i18n::tr("plugins.enable-failed.title"),
+               i18n::tr("plugins.enable-failed.body-error", "plugin", id, "error", reason)
+           );
+         }
+diff --git a/src/scripting/plugin_service_host.cpp b/src/scripting/plugin_service_host.cpp
+index 234d5c8d8..0dbe3404b 100644
+--- a/src/scripting/plugin_service_host.cpp
++++ b/src/scripting/plugin_service_host.cpp
+@@ -260,12 +260,12 @@ namespace scripting {
+     auto name = service.sourcePath.filename().string();
+     if (code.empty()) {
+       kLog.warn("service '{}': failed to reload '{}'", service.entryId, service.sourcePath.string());
+-      notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++      notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+       return;
+     }
+     if (service.runtime == nullptr) {
+       kLog.warn("service '{}': runtime unavailable for reload", service.entryId);
+-      notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++      notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+       return;
+     }
+ 
+@@ -274,7 +274,7 @@ namespace scripting {
+     service.runtime->reload(service.sourcePath.string(), std::move(code), {});
+     armTimer(service);
+     kLog.info("hot reload: reloaded service '{}'", service.entryId);
+-    notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);
++    notify::info("CaeliGlow", i18n::tr("bar.widgets.scripted.reloaded"), name);
+   }
+ 
+   void PluginServiceHost::armTimer(Service& service) {
+diff --git a/src/scripting/script_runtime.cpp b/src/scripting/script_runtime.cpp
+index b5da4587e..9e9a43a85 100644
+--- a/src/scripting/script_runtime.cpp
++++ b/src/scripting/script_runtime.cpp
+@@ -150,10 +150,10 @@ namespace scripting {
+           kLog.info("{}", effect.title);
+           break;
+         case ScriptSideEffectKind::NotifyInfo:
+-          notify::info("Noctalia", effect.title, effect.body);
++          notify::info("CaeliGlow", effect.title, effect.body);
+           break;
+         case ScriptSideEffectKind::NotifyError:
+-          notify::error("Noctalia", effect.title, effect.body);
++          notify::error("CaeliGlow", effect.title, effect.body);
+           break;
+         case ScriptSideEffectKind::CopyToClipboard:
+           if (clipboard == nullptr || !clipboard->copyText(effect.title, effect.body)) {
+@@ -958,7 +958,7 @@ namespace scripting {
+       DeferredCall::callLater([name, reason = std::move(reason)] {
+         const std::string bodyKey =
+             reason == "timeouts" ? "plugins.auto-disabled.body-timeouts" : "plugins.auto-disabled.body-errors";
+-        notify::error("Noctalia", i18n::tr("plugins.auto-disabled.title"), i18n::tr(bodyKey, "plugin", name));
++        notify::error("CaeliGlow", i18n::tr("plugins.auto-disabled.title"), i18n::tr(bodyKey, "plugin", name));
+       });
+     }
+ 
+diff --git a/src/shell/bar/widgets/plugin_widget.cpp b/src/shell/bar/widgets/plugin_widget.cpp
+index 1a0fa67c4..659b7124c 100644
+--- a/src/shell/bar/widgets/plugin_widget.cpp
++++ b/src/shell/bar/widgets/plugin_widget.cpp
+@@ -851,7 +851,7 @@ void PluginWidget::reloadScript() {
+   auto name = m_sourcePath.filename().string();
+   if (source.empty() || !m_runtime) {
+     kLog.warn("hot reload: failed to reload '{}'", name);
+-    notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++    notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+     return;
+   }
+ 
+@@ -892,5 +892,5 @@ void PluginWidget::reloadScript() {
+   startUpdateTimer();
+   requestRedraw();
+   kLog.info("hot reload: reloaded '{}'", name);
+-  notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);
++  notify::info("CaeliGlow", i18n::tr("bar.widgets.scripted.reloaded"), name);
+ }
+diff --git a/src/shell/control_center/plugin_shortcut.cpp b/src/shell/control_center/plugin_shortcut.cpp
+index bc1cebe28..c595611bf 100644
+--- a/src/shell/control_center/plugin_shortcut.cpp
++++ b/src/shell/control_center/plugin_shortcut.cpp
+@@ -164,14 +164,14 @@ void PluginShortcut::reloadScript(bool notifyUser) {
+   if (code.empty()) {
+     kLog.warn("shortcut '{}': failed to reload '{}'", m_entryId, m_sourcePath.string());
+     if (notifyUser) {
+-      notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++      notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+     }
+     return;
+   }
+   if (m_runtime == nullptr) {
+     kLog.warn("shortcut '{}': runtime unavailable for reload", m_entryId);
+     if (notifyUser) {
+-      notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++      notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+     }
+     return;
+   }
+@@ -184,7 +184,7 @@ void PluginShortcut::reloadScript(bool notifyUser) {
+   PanelManager::instance().refresh();
+   kLog.info("hot reload: reloaded shortcut '{}'", m_entryId);
+   if (notifyUser) {
+-    notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);
++    notify::info("CaeliGlow", i18n::tr("bar.widgets.scripted.reloaded"), name);
+   }
+ }
+ 
+diff --git a/src/shell/control_center/tabs/home_tab.cpp b/src/shell/control_center/tabs/home_tab.cpp
+index 240a06975..c40a72a9d 100644
+--- a/src/shell/control_center/tabs/home_tab.cpp
++++ b/src/shell/control_center/tabs/home_tab.cpp
+@@ -266,7 +266,7 @@ std::unique_ptr<Flex> HomeTab::create() {
+         return;
+       }
+       notify::error(
+-          "Noctalia", i18n::tr("control-center.home.avatar-error-title"),
++          "CaeliGlow", i18n::tr("control-center.home.avatar-error-title"),
+           i18n::tr(shell::avatarApplyErrorTranslationKey(applyResult.error))
+       );
+     });
+diff --git a/src/shell/desktop/widgets/plugin_desktop_widget.cpp b/src/shell/desktop/widgets/plugin_desktop_widget.cpp
+index 1b1d29b96..548da4267 100644
+--- a/src/shell/desktop/widgets/plugin_desktop_widget.cpp
++++ b/src/shell/desktop/widgets/plugin_desktop_widget.cpp
+@@ -226,7 +226,7 @@ void PluginDesktopWidget::reloadScript() {
+   auto name = m_sourcePath.filename().string();
+   if (source.empty() || m_runtime == nullptr) {
+     kLog.warn("hot reload: failed to reload '{}'", name);
+-    notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++    notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+     return;
+   }
+ 
+@@ -242,5 +242,5 @@ void PluginDesktopWidget::reloadScript() {
+   startUpdateTimer();
+   requestRedraw();
+   kLog.info("hot reload: reloaded '{}'", name);
+-  notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);
++  notify::info("CaeliGlow", i18n::tr("bar.widgets.scripted.reloaded"), name);
+ }
+diff --git a/src/shell/launcher/launcher_panel.cpp b/src/shell/launcher/launcher_panel.cpp
+index e07d5db8c..7af74efd6 100644
+--- a/src/shell/launcher/launcher_panel.cpp
++++ b/src/shell/launcher/launcher_panel.cpp
+@@ -1854,24 +1854,43 @@ void LauncherPanel::create() {
+     input->setFlexGrow(1.0F);
+     toolbar->addChild(std::move(input));
+     if (showSettingsButton) {
+-      toolbar->addChild(
+-          ui::button({
+-              .out = &m_launcherSettingsButton,
+-              .glyph = "settings",
+-              .glyphSize = Style::fontSizeTitle * scale,
+-              .variant = ButtonVariant::Ghost,
+-              .surfaceOpacity = panelCardOpacity(),
+-              .tooltip = i18n::tr("launcher.browser.actions.settings"),
+-              .radius = Style::scaledRadiusMd(scale),
+-              .width = Style::controlHeight * scale,
+-              .onClick = []() { PanelManager::instance().openSettingsWindow(); },
+-              .configure =
+-                  [scale](Button& button) {
+-                    button.setControlHeight(Style::controlHeight * scale);
+-                    button.inputArea()->setTabFocusKey("launcher.settings");
+-                  },
+-          })
+-      );
++      // CaeliGlow: the settings entry shows the brand logo (with the gear glyph only
++      // as a fallback when the GIF cannot be decoded), not the base shell's gear.
++      auto settingsButton = ui::button({
++          .out = &m_launcherSettingsButton,
++          .contentAlign = ButtonContentAlign::Center,
++          .variant = ButtonVariant::Ghost,
++          .surfaceOpacity = panelCardOpacity(),
++          .tooltip = i18n::tr("launcher.browser.actions.settings"),
++          .radius = Style::scaledRadiusMd(scale),
++          .width = Style::controlHeight * scale,
++          .height = Style::controlHeight * scale,
++          .onClick = []() { PanelManager::instance().openSettingsWindow(); },
++          .configure =
++              [scale](Button& button) {
++                button.setControlHeight(Style::controlHeight * scale);
++                button.setAlign(FlexAlign::Center);
++                button.setJustify(FlexJustify::Center);
++                button.inputArea()->setTabFocusKey("launcher.settings");
++              },
++      });
++      const float logoSize = Style::fontSizeTitle * 1.4F * scale;
++      m_settingsLogoShown = false; // fresh nodes: logo hidden until doUpdate re-attaches it
++      settingsButton->addChild(ui::image({
++          .out = &m_launcherSettingsLogo,
++          .fit = ImageFit::Contain,
++          .width = logoSize,
++          .height = logoSize,
++          .visible = false,
++          .participatesInLayout = false,
++      }));
++      settingsButton->addChild(ui::glyph({
++          .out = &m_launcherSettingsGlyph,
++          .glyph = "settings",
++          .glyphSize = Style::fontSizeTitle * scale,
++          .color = colorSpecFromRole(ColorRole::OnSurfaceVariant),
++      }));
++      toolbar->addChild(std::move(settingsButton));
+     }
+     if (showSessionButton) {
+       toolbar->addChild(
+@@ -2214,6 +2233,19 @@ void LauncherPanel::doLayout(Renderer& renderer, float width, float height) {
+ void LauncherPanel::doUpdate(Renderer& renderer) {
+   if (m_browserMode) {
+     syncLauncherAvatar(renderer);
++    // CaeliGlow: keep the settings-button logo attached to the live scene nodes.
++    if (m_launcherSettingsLogo != nullptr && ensureSettingsLogo(renderer)) {
++      m_settingsLogoAnim.attach(renderer, m_launcherSettingsLogo);
++      if (!m_settingsLogoShown) {
++        m_settingsLogoShown = true;
++        m_launcherSettingsLogo->setVisible(true);
++        m_launcherSettingsLogo->setParticipatesInLayout(true);
++        if (m_launcherSettingsGlyph != nullptr) {
++          m_launcherSettingsGlyph->setVisible(false);
++          m_launcherSettingsGlyph->setParticipatesInLayout(false);
++        }
++      }
++    }
+   }
+ }
+ 
+@@ -2293,14 +2325,37 @@ bool LauncherPanel::ensureLogoAvatar(Renderer& renderer) {
+   return true;
+ }
+ 
++bool LauncherPanel::ensureSettingsLogo(Renderer& renderer) {
++  if (!m_settingsLogoLoaded) {
++    m_settingsLogoLoaded = true;
++    m_settingsLogoUsable =
++        m_settingsLogoAnim.load(renderer, caeliglow::AnimatedImage::kIdle, "caeliglow/logo-panel-idle.gif");
++  }
++  if (m_settingsLogoUsable) {
++    m_logoRenderer = &renderer;
++    PanelManager::instance().requestFrameTick();
++  }
++  return m_settingsLogoUsable;
++}
++
+ void LauncherPanel::onFrameTick(float deltaMs) {
+-  if (!m_logoAvatarActive || m_logoRenderer == nullptr || m_launcherAvatar == nullptr) {
++  // CaeliGlow: advance whichever brand-logo animations are live (avatar and/or
++  // settings button); either one keeps the frame-tick loop running.
++  if (m_logoRenderer == nullptr) {
+     return;
+   }
+-  if (!m_logoAnim.isAnimating()) {
++  bool advanced = false;
++  if (m_logoAvatarActive && m_launcherAvatar != nullptr && m_logoAnim.isAnimating()) {
++    m_logoAnim.advance(*m_logoRenderer, deltaMs);
++    advanced = true;
++  }
++  if (m_launcherSettingsLogo != nullptr && m_settingsLogoUsable && m_settingsLogoAnim.isAnimating()) {
++    m_settingsLogoAnim.advance(*m_logoRenderer, deltaMs);
++    advanced = true;
++  }
++  if (!advanced) {
+     return;
+   }
+-  m_logoAnim.advance(*m_logoRenderer, deltaMs);
+   if (root() != nullptr) {
+     root()->markPaintDirty();
+   }
+diff --git a/src/shell/launcher/launcher_panel.h b/src/shell/launcher/launcher_panel.h
+index 0fa48a367..91903b066 100644
+--- a/src/shell/launcher/launcher_panel.h
++++ b/src/shell/launcher/launcher_panel.h
+@@ -138,6 +138,8 @@ private:
+   // with the animated brand logo (idle GIF). Returns false if the asset is unavailable,
+   // in which case the caller falls back to the static glyph.
+   bool ensureLogoAvatar(Renderer& renderer);
++  // CaeliGlow: brand logo for the toolbar settings button (replaces the gear glyph).
++  bool ensureSettingsLogo(Renderer& renderer);
+   void showProviderOverview();
+   void showSessionActions();
+   [[nodiscard]] bool usesBrowserLayout() const;
+@@ -158,6 +160,9 @@ private:
+   Image* m_launcherAvatar = nullptr;
+   Glyph* m_launcherAvatarFallback = nullptr;
+   Button* m_launcherSettingsButton = nullptr;
++  // CaeliGlow: logo image + gear fallback inside the settings button.
++  Image* m_launcherSettingsLogo = nullptr;
++  Glyph* m_launcherSettingsGlyph = nullptr;
+   Button* m_launcherUsageButton = nullptr;
+   Button* m_launcherGridButton = nullptr;
+   Button* m_launcherPowerButton = nullptr;
+@@ -207,6 +212,10 @@ private:
+   std::string m_launcherAvatarPath;
+   // CaeliGlow: animated brand-logo avatar state (used only when no user avatar exists).
+   caeliglow::AnimatedImage m_logoAnim;
++  caeliglow::AnimatedImage m_settingsLogoAnim;
++  bool m_settingsLogoLoaded = false;
++  bool m_settingsLogoUsable = false;
++  bool m_settingsLogoShown = false;
+   Renderer* m_logoRenderer = nullptr;
+   bool m_logoAvatarLoaded = false;
+   bool m_logoAvatarUsable = false;
+diff --git a/src/shell/panel/plugin_panel.cpp b/src/shell/panel/plugin_panel.cpp
+index 2eae53074..2720f4dd6 100644
+--- a/src/shell/panel/plugin_panel.cpp
++++ b/src/shell/panel/plugin_panel.cpp
+@@ -521,7 +521,7 @@ void PluginPanel::reloadScript() {
+   auto name = m_sourcePath.filename().string();
+   if (source.empty() || m_runtime == nullptr) {
+     kLog.warn("hot reload: failed to reload '{}'", name);
+-    notify::error("Noctalia", i18n::tr("bar.widgets.scripted.reload-failed"), name);
++    notify::error("CaeliGlow", i18n::tr("bar.widgets.scripted.reload-failed"), name);
+     return;
+   }
+ 
+@@ -537,5 +537,5 @@ void PluginPanel::reloadScript() {
+   }
+   startTickTimer();
+   kLog.info("hot reload: reloaded '{}'", name);
+-  notify::info("Noctalia", i18n::tr("bar.widgets.scripted.reloaded"), name);
++  notify::info("CaeliGlow", i18n::tr("bar.widgets.scripted.reloaded"), name);
+ }
+diff --git a/src/shell/session/session_action_runner.cpp b/src/shell/session/session_action_runner.cpp
+index 19a64cdf6..c18d0c78d 100644
+--- a/src/shell/session/session_action_runner.cpp
++++ b/src/shell/session/session_action_runner.cpp
+@@ -257,7 +257,7 @@ void SessionActionRunner::invoke(const SessionPanelActionConfig& cfg) const {
+   }
+   if (cfg.action == "lock_and_suspend") {
+     if (!lockThenSuspendDetached()) {
+-      notify::error("Noctalia", i18n::tr("session.errors.lock-title"), i18n::tr("session.errors.lock-body"));
++      notify::error("CaeliGlow", i18n::tr("session.errors.lock-title"), i18n::tr("session.errors.lock-body"));
+     }
+     return;
+   }
+@@ -271,7 +271,7 @@ void SessionActionRunner::invoke(const SessionPanelActionConfig& cfg) const {
+   }
+   if (cfg.action == "lock") {
+     if (!lock()) {
+-      notify::error("Noctalia", i18n::tr("session.errors.lock-title"), i18n::tr("session.errors.lock-body"));
++      notify::error("CaeliGlow", i18n::tr("session.errors.lock-title"), i18n::tr("session.errors.lock-body"));
+     }
+     return;
+   }
+diff --git a/src/system/internal_app_metadata.cpp b/src/system/internal_app_metadata.cpp
+index 1375de96d..b32b74919 100644
+--- a/src/system/internal_app_metadata.cpp
++++ b/src/system/internal_app_metadata.cpp
+@@ -11,9 +11,9 @@ namespace internal_apps {
+     constexpr InternalAppDefinition kInternalApps[] = {
+         {
+             .appId = "dev.noctalia.Noctalia",
+-            .windowTitle = "Noctalia Settings",
+-            .displayName = "Noctalia",
+-            .iconAssetPath = "noctalia.svg",
++            .windowTitle = "CaeliGlow Settings",
++            .displayName = "CaeliGlow",
++            .iconAssetPath = "caeliglow/logo.png",
+         },
+     };
+ 
+diff --git a/src/wayland/toplevel_surface.cpp b/src/wayland/toplevel_surface.cpp
+index 9d948bc1b..3499bb07f 100644
+--- a/src/wayland/toplevel_surface.cpp
++++ b/src/wayland/toplevel_surface.cpp
+@@ -70,7 +70,7 @@ bool ToplevelSurface::initialize(wl_output* output, ToplevelSurfaceConfig config
+   }
+ 
+   xdg_toplevel_add_listener(m_toplevel, &kToplevelListener, this);
+-  xdg_toplevel_set_title(m_toplevel, config.title.empty() ? "Noctalia" : config.title.c_str());
++  xdg_toplevel_set_title(m_toplevel, config.title.empty() ? "CaeliGlow" : config.title.c_str());
+   xdg_toplevel_set_app_id(m_toplevel, config.appId != nullptr ? config.appId : "dev.noctalia.Noctalia");
+   if (config.minWidth > 0 || config.minHeight > 0) {
+     xdg_toplevel_set_min_size(
+diff --git a/src/wayland/toplevel_surface.h b/src/wayland/toplevel_surface.h
+index a9b8cd088..78e6e99b2 100644
+--- a/src/wayland/toplevel_surface.h
++++ b/src/wayland/toplevel_surface.h
+@@ -16,7 +16,7 @@ struct ToplevelSurfaceConfig {
+   std::uint32_t height = 480;
+   std::uint32_t minWidth = 0;
+   std::uint32_t minHeight = 0;
+-  std::string title = "Noctalia";
++  std::string title = "CaeliGlow";
+   const char* appId = "dev.noctalia.Noctalia";
+ };
+ 
+-- 
+2.56.0
+

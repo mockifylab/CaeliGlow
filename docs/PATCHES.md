@@ -239,6 +239,96 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
 - **Status:** **compiled + regression-tested** (153/153; path assertions updated in the
   four affected tests).
 
+## 0009 — Launcher docked to the bottom edge, edge-to-edge, concave screen corners
+- **Files:** `src/config/config_types.h`, `src/shell/panel/panel_manager.cpp`,
+  `src/shell/launcher/launcher_panel.{h,cpp}`
+- **What:** the signature layout becomes the compiled default: bar `position = "bottom"`
+  and `launcher_placement = attached`. `Panel::fillsWidth()/fillsHeight()` are now honored
+  for **attached** placement too — the launcher spans the full output width, drops its
+  cross-axis outset, and pins to coordinate 0, so the panel body melts into both screen
+  edges and the compositor clips the flare. The two corners at the screen edge render
+  **concave** (inward bulge) via the existing `attached_panel::cornerShapes/logicalInset`
+  machinery — the Caelestia-style joined-edge look, re-implemented with no new renderer.
+- **Status:** **compiled + regression-tested** (153/153).
+
+## 0010 — Edge hot-corner triggers are open-only (fixes hover flicker)
+- **Files:** `src/app/application.h`, `src/app/application_services.cpp`,
+  `src/shell/hot_corners/hot_corners.{h,cpp}`
+- **Bug:** hovering the bottom/right edge triggers flickered — re-entering an armed corner
+  while the panel it opened covers the trigger toggled it closed, then open again.
+- **Fix:** `Application::isShellActionPanelOpen()` (mirrors the `triggerShellAction`
+  panel-id map through `PanelManager::isOpenPanel`) makes edge triggers **open-only**;
+  a 400 ms per-corner cooldown latch (`Corner::lastTriggerAt`) absorbs the remaining
+  re-entry chatter. Corners with `command`/other actions keep their behavior.
+- **Status:** **compiled + regression-tested** (153/153).
+
+## 0011 — `[caeliglow]` config section + elastic easing
+- **Files:** `src/config/config_types.h`, `src/config/config_overrides.cpp`,
+  `src/config/config_service.cpp`, `src/config/schema/{config_schema.h,config_schema.cpp,config_sections.cpp,ranges.h}`,
+  `src/render/animation/animation.{h,cpp}`, `src/shell/bar/bar.cpp`,
+  `tests/config_schema_roundtrip_test.cpp`
+- **What:** new `CaeliGlowConfig` under `[caeliglow]`: `motion` (classic / soft / fizzy /
+  morphy), `duration_ms` (80–1500), `elasticity` (0–1), `hover_open` (bool). Registered
+  through the declarative schema (validate/export/round-trip come free; the ranges in
+  `ranges.h` are the single source for parser clamp **and** Settings slider bounds).
+  `Easing::EaseOutElastic` (damped-sine overshoot) is added to the animation engine, and
+  bar hover-reveal now respects `hover_open` at runtime.
+- **Status:** **compiled + regression-tested** (153/153; round-trip probe covers all five fields).
+
+## 0012 — Right-edge docking for panels + spring motion wiring
+- **Files:** `src/shell/panel/panel.{h}`, `src/shell/panel/panel_manager.{h,cpp}`,
+  `src/shell/session/caeliglow_power_panel.h`
+- **Docking:** `Panel::dockToScreenEdge()` opt-in (default empty); the power pill returns
+  `"right"`. `openPanel` gained a docked-placement branch (mirror of the attached-bar
+  geometry for a vertical/horizontal screen edge): anchored surface, flare extends the
+  surface along the cross axis, one-side bleed removed at the edge, reveal direction from
+  `attached_panel::revealDirection`, and `buildScene` renders the background with concave
+  corner shapes on the docked edge — the same joined-edge language as 0009. Compositor
+  blur/input regions tessellate with those shapes.
+- **Motion:** `PanelManager::panelMotion()` maps `[caeliglow]` to open/close durations and
+  easings (classic: cubic; soft: back-ease overshoot; fizzy: elastic + squash pulse;
+  morphy: elastic + a stronger squash-and-stretch). `startOpenSquashPulse()` scales the
+  content node about the reveal-origin with a complementary x/y squash, elastic ease-out.
+  Open **and** close paths (attached + detached) consume it; close resets the scale.
+- **Status:** **compiled + regression-tested** (153/153).
+
+## 0013 — Settings: CaeliGlow section (+ session pill edge)
+- **Files:** `src/shell/settings/settings_registry.{h,cpp}`, `src/config/config_types.h`,
+  `src/config/schema/config_schema.cpp`, `src/shell/session/caeliglow_power_panel.{h,cpp}`,
+  `assets/translations/en.json`
+- **What:** the Settings sidebar gains a **CaeliGlow** section (sparkles glyph) with
+  registry entries wired to the schema: motion segmented picker, duration + elasticity
+  sliders (elasticity only shows for fizzy/morphy), hover-to-open toggle, and a new
+  `power_edge` (left/right) that moves the session pill's docking edge — `dockToScreenEdge()`
+  now reads the config. All controls render with the global theme/UI style like every
+  other section. `about` section label becomes “About”; the brand name belongs to this section.
+- **Status:** **compiled + regression-tested** (153/153).
+
+## 0014 — Full CaeliGlow branding of user-facing strings
+- **Files:** `src/shell/launcher/launcher_panel.{h,cpp}`, `assets/caeliglow/logo.png` (new),
+  `src/system/internal_app_metadata.cpp`, `src/wayland/toplevel_surface.{h,cpp}`,
+  `assets/translations/en.json`, ~17 source files with `notify`/display literals
+- **What:** the launcher's settings button shows the **animated CaeliGlow logo** (idle GIF
+  via a second `AnimatedImage`, gear glyph only as decode-failure fallback; frame tick
+  advanced for avatar and button together). The internal Settings app entry is named
+  CaeliGlow with `caeliglow/logo.png` as its icon. 25 translation strings and every
+  user-facing `"Noctalia"` notification title / window title become CaeliGlow.
+- **Kept intentionally:** identifiers — app id `dev.noctalia.Noctalia`, palette key
+  `"Noctalia"`, `noctalia.dev` URLs, greeter commands/env vars, plugin ids — renaming
+  those would break system integration and existing configs for no UI benefit.
+- **Status:** **compiled + regression-tested** (153/153).
+
+## 0015 — About “Install now” = in-place update
+- **Files:** `src/shell/settings/settings_content_about.{h,cpp}`, `settings_window.h`,
+  `settings_window_scene.cpp`
+- **What:** when the update check finds a newer release, the About page shows an
+  **Install vX now** button. It launches the CaeliGlow quick-install one-liner
+  (`curl …/main/scripts/quick-install.sh | bash`) in a terminal window via the existing
+  `terminal_launch` helper — the new version is built and installed over the current one,
+  in place; `~/.config/caeliglow` and state are untouched. Failure falls back to a clear
+  message with the manual command hint.
+- **Status:** **compiled + regression-tested** (153/153).
+
 ---
 
 ## Notes on safety of the model

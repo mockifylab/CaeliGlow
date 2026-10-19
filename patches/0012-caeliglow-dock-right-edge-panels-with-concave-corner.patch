@@ -1,0 +1,406 @@
+From f4773bad29baeeddcffb556a11f5bd20914a167a Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 15:13:03 +0500
+Subject: [PATCH] caeliglow: dock right-edge panels with concave corners and
+ wire spring motion
+
+Panels can opt into screen-edge docking (dockToScreenEdge); the power
+pill docks to the right edge with the same concave flare treatment as
+the bottom-docked launcher. Open/close animations consume the
+[caeliglow] motion settings, including the squash-and-stretch pulse for
+fizzy/morphy.
+---
+ src/shell/panel/panel.h                   |   5 +
+ src/shell/panel/panel_manager.cpp         | 206 ++++++++++++++++++++--
+ src/shell/panel/panel_manager.h           |  19 ++
+ src/shell/session/caeliglow_power_panel.h |   4 +
+ 4 files changed, 219 insertions(+), 15 deletions(-)
+
+diff --git a/src/shell/panel/panel.h b/src/shell/panel/panel.h
+index e6865fd9c..5071456d9 100644
+--- a/src/shell/panel/panel.h
++++ b/src/shell/panel/panel.h
+@@ -77,6 +77,11 @@ public:
+   // Floating screen position (one of kPanelPositions). Plugin panels override; built-in
+   // panels resolve through shell.panel.*_position in PanelManager.
+   [[nodiscard]] virtual std::string panelScreenPosition() const { return "auto"; }
++  // CaeliGlow: dock a detached (floating-placement) panel flush against a screen
++  // edge: "left" | "right" | "top" | "bottom"; empty keeps the classic detached
++  // placement. The corners touching the docked edge render concave with the flare
++  // clipped by the screen edge, mirroring the docked launcher's language.
++  [[nodiscard]] virtual std::string dockToScreenEdge() const { return ""; }
+   [[nodiscard]] virtual bool panelOpenNearClick() const { return false; }
+   // For attached panels: which bar edge to attach to when more than one bar exists on
+   // the target output. Returned value must outlive the call (use a string literal).
+diff --git a/src/shell/panel/panel_manager.cpp b/src/shell/panel/panel_manager.cpp
+index d10fb6178..e177388c5 100644
+--- a/src/shell/panel/panel_manager.cpp
++++ b/src/shell/panel/panel_manager.cpp
+@@ -885,6 +885,68 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
+     activateClickShield(panelLayer);
+   }
+ 
++  // CaeliGlow: edge-flush dock for detached panels (the right-edge power pill).
++  // Overrides the generic placement: the body sits at the absolute screen edge,
++  // the docked side drops its shadow bleed (there is no room off-screen), and the
++  // surface grows by a corner flare on the cross axis so the concave screen-edge
++  // corners have room to render — the compositor clips the flare's outer half,
++  // which reads as the panel melting into the screen edge.
++  const std::string dockEdge = m_activePanel->dockToScreenEdge();
++  const bool useDockedPlacement = !useAttachedPlacement && !dockEdge.empty() && outputWidth > 0 && outputHeight > 0
++      && (dockEdge == "left" || dockEdge == "right" || dockEdge == "top" || dockEdge == "bottom");
++  std::int32_t dockInsetX = detachedShadowBleed.left;
++  std::int32_t dockInsetY = detachedShadowBleed.up;
++  std::int32_t dockBleedRight = static_cast<std::int32_t>(detachedShadowBleed.right);
++  std::int32_t dockBleedBottom = static_cast<std::int32_t>(detachedShadowBleed.down);
++  std::optional<AttachedRevealDirection> dockRevealDirection;
++  if (useDockedPlacement) {
++    const float dockRadius = Style::scaledRadiusXl(m_activePanel->contentScale());
++    const std::int32_t flare = static_cast<std::int32_t>(std::ceil(dockRadius)) + 2;
++    const auto bodyW = static_cast<std::int32_t>(panelWidth);
++    const auto bodyH = static_cast<std::int32_t>(panelHeight);
++    const auto bleedL = static_cast<std::int32_t>(detachedShadowBleed.left);
++    const auto bleedR = static_cast<std::int32_t>(detachedShadowBleed.right);
++    const auto bleedU = static_cast<std::int32_t>(detachedShadowBleed.up);
++    const auto bleedD = static_cast<std::int32_t>(detachedShadowBleed.down);
++    standaloneAnchor = 0;
++    standaloneMarginTop = standaloneMarginRight = standaloneMarginBottom = standaloneMarginLeft = 0;
++    if (dockEdge == "right" || dockEdge == "left") {
++      const std::int32_t surfaceW = bodyW + bleedL + bleedR;
++      const std::int32_t surfaceH = bodyH + bleedU + bleedD + 2 * flare;
++      requestedSurfaceWidth = static_cast<std::uint32_t>(surfaceW - (dockEdge == "right" ? bleedR : bleedL));
++      requestedSurfaceHeight = static_cast<std::uint32_t>(surfaceH);
++      standaloneAnchor = LayerShellAnchor::Top | (dockEdge == "right" ? LayerShellAnchor::Right : LayerShellAnchor::Left);
++      standaloneMarginTop = std::max(0, (outputHeight - surfaceH) / 2);
++      dockInsetY = bleedU + flare;
++      if (dockEdge == "right") {
++        dockBleedRight = 0;
++      } else {
++        dockInsetX = 0;
++      }
++    } else {
++      const std::int32_t surfaceW = bodyW + bleedL + bleedR + 2 * flare;
++      const std::int32_t surfaceH = bodyH + bleedU + bleedD;
++      requestedSurfaceWidth = static_cast<std::uint32_t>(surfaceW);
++      requestedSurfaceHeight = static_cast<std::uint32_t>(surfaceH - (dockEdge == "bottom" ? bleedD : bleedU));
++      standaloneAnchor = (dockEdge == "bottom" ? LayerShellAnchor::Bottom : LayerShellAnchor::Top) | LayerShellAnchor::Left;
++      standaloneMarginLeft = std::max(0, (outputWidth - surfaceW) / 2);
++      dockInsetX = bleedL + flare;
++      if (dockEdge == "bottom") {
++        dockBleedBottom = 0;
++      } else {
++        dockInsetY = 0;
++      }
++    }
++    fallbackSurfaceWidth = requestedSurfaceWidth;
++    fallbackSurfaceHeight = requestedSurfaceHeight;
++    detachedPanelInputRect = panelInputRectForSurface(
++        standaloneAnchor, standaloneMarginTop, standaloneMarginRight, standaloneMarginBottom, standaloneMarginLeft,
++        outputWidth, outputHeight, requestedSurfaceWidth, requestedSurfaceHeight, dockInsetX, dockInsetY, panelWidth,
++        panelHeight
++    );
++    dockRevealDirection = attached_panel::revealDirection(dockEdge);
++  }
++
+   auto surfaceConfig = LayerSurfaceConfig{
+       .nameSpace = "noctalia-panel",
+       .layer = floatingPanelLayer,
+@@ -950,6 +1012,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
+     m_detachedRevealDirection = AttachedRevealDirection::Down;
+     m_keyboardRelaxTimer.stop();
+     m_attachedBarPosition.clear();
++    m_detachedDockEdge.clear();
+     m_sourceBarName.clear();
+     m_attachedPanelGeometry.reset();
+     m_attachedToBar = false;
+@@ -1231,6 +1294,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
+     m_detachedRevealDirection = AttachedRevealDirection::Down;
+     m_keyboardRelaxTimer.stop();
+     m_attachedBarPosition.clear();
++    m_detachedDockEdge.clear();
+     m_attachedPanelGeometry.reset();
+     m_attachedOpenAnimationPending = false;
+     kLog.warn("panel manager: attached layer-shell failed for \"{}\", falling back to standalone", panelId);
+@@ -1243,12 +1307,12 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
+   auto layerSurface = std::make_unique<LayerSurface>(m_platform->wayland(), std::move(surfaceConfig));
+   m_layerSurface = layerSurface.get();
+   m_surface = std::move(layerSurface);
+-  m_panelInsetX = detachedShadowBleed.left;
+-  m_panelInsetY = detachedShadowBleed.up;
++  m_panelInsetX = dockInsetX;
++  m_panelInsetY = dockInsetY;
+   m_panelVisualWidth = panelWidth;
+   m_panelVisualHeight = panelHeight;
+-  m_detachedBleedRight = detachedShadowBleed.right;
+-  m_detachedBleedBottom = detachedShadowBleed.down;
++  m_detachedBleedRight = dockBleedRight;
++  m_detachedBleedBottom = dockBleedBottom;
+   m_attachedBackgroundOpacity = 1.0F;
+   m_attachedContactShadow = false;
+   m_attachedRevealProgress = 1.0F;
+@@ -1256,9 +1320,10 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
+   // Keep detached panels hidden until buildScene applies the opening reveal.
+   m_detachedRevealProgress = 0.0F;
+   m_attachedRevealDirection = AttachedRevealDirection::Down;
+-  m_detachedRevealDirection = detachedDirection;
++  m_detachedRevealDirection = dockRevealDirection.value_or(detachedDirection);
+   m_attachedPanelGeometry.reset();
+   m_attachedToBar = false;
++  m_detachedDockEdge = useDockedPlacement ? dockEdge : std::string{};
+   configureSurfaceCallbacks(*m_surface);
+   if (wantsOutsideDismiss) {
+     m_panelOutputInputRect = detachedPanelInputRect;
+@@ -1462,10 +1527,14 @@ void PanelManager::closePanel(bool animateClose) {
+ 
+   if (animateClose && m_sceneRoot != nullptr && m_activePanel != nullptr && m_activePanel->wantsCloseAnimation()) {
+     const std::uint64_t gen = ++m_destroyGeneration;
++    const PanelMotion motion = panelMotion();
+     if (m_attachedToBar && m_attachedRevealClipNode != nullptr) {
+       m_animations.cancelForOwner(m_attachedRevealClipNode);
++      if (m_attachedRevealContentNode != nullptr) {
++        m_attachedRevealContentNode->setScale(1.0F, 1.0F);
++      }
+       m_animations.animate(
+-          m_attachedRevealProgress, 0.0F, Style::animNormal, Easing::EaseInOutQuad,
++          m_attachedRevealProgress, 0.0F, motion.closeMs, motion.closeEasingAttached,
+           [this](float v) { applyAttachedReveal(v); },
+           [this, gen]() {
+             DeferredCall::callLater([this, gen]() {
+@@ -1478,8 +1547,11 @@ void PanelManager::closePanel(bool animateClose) {
+       );
+     } else {
+       m_animations.cancelForOwner(m_sceneRoot.get());
++      if (m_detachedRevealContentNode != nullptr) {
++        m_detachedRevealContentNode->setScale(1.0F, 1.0F);
++      }
+       m_animations.animate(
+-          m_detachedRevealProgress, 0.0F, Style::animNormal, Easing::EaseInQuad,
++          m_detachedRevealProgress, 0.0F, motion.closeMs, motion.closeEasingDetached,
+           [this](float v) { applyDetachedReveal(v); },
+           [this, gen]() {
+             DeferredCall::callLater([this, gen]() {
+@@ -1626,6 +1698,7 @@ void PanelManager::destroyPanel() {
+   m_detachedRevealDirection = AttachedRevealDirection::Down;
+   m_keyboardRelaxTimer.stop();
+   m_attachedBarPosition.clear();
++  m_detachedDockEdge.clear();
+   m_sourceBarName.clear();
+   m_attachedPanelGeometry.reset();
+   m_attachedToBar = false;
+@@ -2327,10 +2400,83 @@ void PanelManager::startAttachedOpenAnimation() {
+   }
+ 
+   m_attachedOpenAnimationPending = false;
++  const PanelMotion motion = panelMotion();
+   m_animations.animate(
+-      m_attachedRevealProgress, 1.0F, Style::animNormal, Easing::EaseOutCubic,
++      m_attachedRevealProgress, 1.0F, motion.openMs, motion.openEasing,
+       [this](float v) { applyAttachedReveal(v); }, {}, m_attachedRevealClipNode
+   );
++  startOpenSquashPulse(m_attachedRevealContentNode, m_attachedRevealClipNode, motion, m_attachedRevealDirection);
++}
++
++// CaeliGlow: resolve the configured motion language for panel reveals.
++PanelManager::PanelMotion PanelManager::panelMotion() const {
++  PanelMotion motion;
++  if (m_config == nullptr) {
++    return motion;
++  }
++  const auto& cg = m_config->config().caeliglow;
++  using Motion = CaeliGlowConfig::Motion;
++  const float e = std::clamp(cg.elasticity, 0.0F, 1.0F);
++  motion.openMs = std::max(80, cg.durationMs);
++  motion.closeMs = std::max(80, static_cast<std::int32_t>(static_cast<float>(motion.openMs) * 0.6F));
++  switch (cg.motion) {
++  case Motion::Classic:
++    break; // upstream cubic reveal, unchanged
++  case Motion::Soft:
++    motion.openEasing = Easing::EaseOutBack;
++    motion.closeEasingAttached = Easing::EaseInOutQuad;
++    motion.closeEasingDetached = Easing::EaseInOutQuad;
++    break;
++  case Motion::Fizzy:
++    motion.openEasing = Easing::EaseOutElastic;
++    motion.closeEasingAttached = Easing::EaseOutBack;
++    motion.closeEasingDetached = Easing::EaseOutBack;
++    motion.squash = 0.05F + 0.07F * e;
++    break;
++  case Motion::Morphy:
++    motion.openEasing = Easing::EaseOutElastic;
++    motion.closeEasingAttached = Easing::EaseOutBack;
++    motion.closeEasingDetached = Easing::EaseOutBack;
++    motion.squash = 0.10F + 0.14F * e;
++    break;
++  }
++  return motion;
++}
++
++// CaeliGlow: "morphy" jelly — the revealed content starts squashed against the edge
++// it grows from and springs through resting size into place, with the axis pair
++// kept area-conserving (scaleY = 2 - scaleX) for the squash-and-stretch feel.
++void PanelManager::startOpenSquashPulse(
++    Node* contentNode, const void* ownerNode, const PanelMotion& motion, AttachedRevealDirection direction
++) {
++  if (contentNode == nullptr || ownerNode == nullptr || motion.squash <= 0.0F) {
++    return;
++  }
++  const float w = contentNode->width();
++  const float h = contentNode->height();
++  float originX = w * 0.5F;
++  float originY = 0.0F;
++  switch (direction) {
++  case AttachedRevealDirection::Up: // grows off a bottom bar: anchored at the bottom
++    originY = h;
++    break;
++  case AttachedRevealDirection::Down:
++    originY = 0.0F;
++    break;
++  case AttachedRevealDirection::Left: // grows off a right edge: anchored at the right
++    originX = w;
++    originY = h * 0.5F;
++    break;
++  case AttachedRevealDirection::Right:
++    originX = 0.0F;
++    originY = h * 0.5F;
++    break;
++  }
++  contentNode->setTransformOrigin(originX, originY);
++  m_animations.animate(
++      1.0F - motion.squash, 1.0F, motion.openMs, Easing::EaseOutElastic,
++      [contentNode](float v) { contentNode->setScale(v, 2.0F - v); }, {}, ownerNode
++  );
+ }
+ 
+ void PanelManager::publishAttachedPanelGeometry(float revealProgress) {
+@@ -2436,9 +2582,15 @@ void PanelManager::applyPanelCompositorBlur(
+   }
+ 
+   const float radius = Style::scaledRadiusXl(m_activePanel->contentScale());
+-  const CornerShapes corners = m_attachedToBar ? attached_panel::cornerShapes(m_attachedBarPosition) : CornerShapes{};
++  // CaeliGlow: attached panels shape their corners after the bar edge; edge-docked
++  // detached panels (the power pill) after the docked screen edge.
++  const bool detachedDocked = !m_attachedToBar && !m_detachedDockEdge.empty();
++  const std::string_view shapeEdge =
++      m_attachedToBar ? std::string_view{m_attachedBarPosition}
++                      : (detachedDocked ? std::string_view{m_detachedDockEdge} : std::string_view{});
++  const CornerShapes corners = shapeEdge.empty() ? CornerShapes{} : attached_panel::cornerShapes(shapeEdge);
+   const RectInsets logicalInset =
+-      m_attachedToBar ? attached_panel::logicalInset(m_attachedBarPosition, radius) : RectInsets{};
++      shapeEdge.empty() ? RectInsets{} : attached_panel::logicalInset(shapeEdge, radius);
+   const Radii radii = Radii{radius, radius, radius, radius};
+   auto strips = Surface::tessellateShape(bodyX, bodyY, bodyW, bodyH, corners, logicalInset, radii);
+   if (strips.empty()) {
+@@ -2685,6 +2837,21 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
+         bg->setLogicalInset(attached_panel::logicalInset(m_attachedBarPosition, radius));
+         bg->setRadii(Radii{radius, radius, radius, radius});
+         // Fill (opacity-dependent) is applied via applyAttachedDecorationStyle() below.
++      } else if (!m_detachedDockEdge.empty()) {
++        // CaeliGlow: edge-docked detached panels (the power pill) render the same
++        // concave screen-edge corners as attached panels, shaped after the edge.
++        const float radius = Style::scaledRadiusXl(m_activePanel->contentScale());
++        const float backgroundOpacity = shell::panel_surface::backgroundOpacity(m_config);
++        bg->setFill(colorSpecFromRole(ColorRole::Surface, backgroundOpacity));
++        if (panelBorders) {
++          bg->setBorder(
++              shell::panel_surface::borderColor(m_config, backgroundOpacity),
++              shell::panel_surface::borderWidth(m_config)
++          );
++        }
++        bg->setCornerShapes(attached_panel::cornerShapes(m_detachedDockEdge));
++        bg->setLogicalInset(attached_panel::logicalInset(m_detachedDockEdge, radius));
++        bg->setRadii(Radii{radius, radius, radius, radius});
+       } else {
+         const float backgroundOpacity = shell::panel_surface::backgroundOpacity(m_config);
+         bg->setFill(colorSpecFromRole(ColorRole::Surface, backgroundOpacity));
+@@ -2740,10 +2907,12 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
+       m_attachedOpenAnimationPending = true;
+     } else {
+       applyDetachedReveal(0.0F);
++      const PanelMotion motion = panelMotion();
+       m_animations.animate(
+-          0.0F, 1.0F, Style::animNormal, Easing::EaseOutCubic, [this](float v) { applyDetachedReveal(v); }, {},
++          0.0F, 1.0F, motion.openMs, motion.openEasing, [this](float v) { applyDetachedReveal(v); }, {},
+           m_sceneRoot.get()
+       );
++      startOpenSquashPulse(m_detachedRevealContentNode, m_sceneRoot.get(), motion, m_detachedRevealDirection);
+     }
+ 
+     m_surface->setSceneRoot(m_sceneRoot.get());
+@@ -2796,11 +2965,18 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
+   const float panelH = m_panelVisualHeight > 0 ? static_cast<float>(m_panelVisualHeight) : h;
+   const float attachedRadius = m_attachedToBar ? Style::scaledRadiusXl(m_activePanel->contentScale()) : 0.0F;
+   const bool barIsVertical = m_attachedToBar && (m_attachedBarPosition == "left" || m_attachedBarPosition == "right");
++  // CaeliGlow: edge-docked detached panels grow their bg past the body along the
++  // dock edge's cross axis for the concave-corner flares, same as attached panels.
++  const float dockRadius = !m_attachedToBar && !m_detachedDockEdge.empty()
++      ? Style::scaledRadiusXl(m_activePanel->contentScale())
++      : 0.0F;
++  const bool flareVertical = barIsVertical || m_detachedDockEdge == "left" || m_detachedDockEdge == "right";
++  const float flareRadius = m_attachedToBar ? attachedRadius : dockRadius;
+   // The bg extends past the body along the bar cross axis for concave-corner notches.
+-  const float bgX = barIsVertical ? panelX : panelX - attachedRadius;
+-  const float bgY = barIsVertical ? panelY - attachedRadius : panelY;
+-  const float bgW = barIsVertical ? panelW : panelW + attachedRadius * 2.0F;
+-  const float bgH = barIsVertical ? panelH + attachedRadius * 2.0F : panelH;
++  const float bgX = flareVertical ? panelX : panelX - flareRadius;
++  const float bgY = flareVertical ? panelY - flareRadius : panelY;
++  const float bgW = flareVertical ? panelW : panelW + flareRadius * 2.0F;
++  const float bgH = flareVertical ? panelH + flareRadius * 2.0F : panelH;
+ 
+   if (m_panelShadowNode != nullptr && m_config != nullptr) {
+     const auto& shadowConfig = m_config->config().shell.shadow;
+diff --git a/src/shell/panel/panel_manager.h b/src/shell/panel/panel_manager.h
+index c10ac4c69..5a1661c31 100644
+--- a/src/shell/panel/panel_manager.h
++++ b/src/shell/panel/panel_manager.h
+@@ -205,6 +205,21 @@ private:
+   void applyAttachedReveal(float progress);
+   void applyDetachedReveal(float progress);
+   void startAttachedOpenAnimation();
++  // CaeliGlow: the configured motion language ([caeliglow] motion/duration/elasticity)
++  // resolved for the active panel's open and close animations.
++  struct PanelMotion {
++    std::int32_t openMs = 200;
++    Easing openEasing = Easing::EaseOutCubic;
++    std::int32_t closeMs = 200;
++    Easing closeEasingAttached = Easing::EaseInOutQuad;
++    Easing closeEasingDetached = Easing::EaseInQuad;
++    float squash = 0.0F; // squash-and-stretch pulse amplitude (0 = none)
++  };
++  [[nodiscard]] PanelMotion panelMotion() const;
++  // Springy squash-and-stretch pulse on the revealed content node, anchored on the
++  // edge the panel grows from. Owner doubles as the animation cancel key.
++  void startOpenSquashPulse(Node* contentNode, const void* ownerNode, const PanelMotion& motion,
++                            AttachedRevealDirection direction);
+   void publishAttachedPanelGeometry(float revealProgress);
+   // Restyle the attached-panel decoration nodes (bg fill, drop shadow, contact shadow)
+   // using the cached attached background opacity and bar position. Geometry/positions are not touched.
+@@ -285,6 +300,10 @@ private:
+   wl_callback* m_captureCloseFrame = nullptr;
+   std::function<void()> m_afterCaptureClose;
+   std::string m_attachedBarPosition; // "top" / "bottom" / "left" / "right" while attached, empty otherwise
++  // CaeliGlow: screen edge ("top"/"bottom"/"left"/"right") a detached panel is docked
++  // flush against, empty for classic detached placement. Drives the concave corner
++  // shapes, logical inset, and reveal direction of the docked surface.
++  std::string m_detachedDockEdge;
+   std::string m_sourceBarName;       // name of the bar that opened the current panel
+   std::optional<AttachedPanelGeometry> m_attachedPanelGeometry;
+   bool m_pointerInside = false;
+diff --git a/src/shell/session/caeliglow_power_panel.h b/src/shell/session/caeliglow_power_panel.h
+index bfb4be91f..69ae6b673 100644
+--- a/src/shell/session/caeliglow_power_panel.h
++++ b/src/shell/session/caeliglow_power_panel.h
+@@ -45,6 +45,10 @@ public:
+ 
+   [[nodiscard]] PanelPlacement panelPlacement() const noexcept override { return PanelPlacement::Floating; }
+   [[nodiscard]] std::string panelScreenPosition() const override { return "center_right"; }
++  // CaeliGlow: the pill docks flush to the screen's right edge; its right-side
++  // corners render concave with the flare clipped by the edge (matches the
++  // bottom-docked launcher language).
++  [[nodiscard]] std::string dockToScreenEdge() const override { return "right"; }
+   [[nodiscard]] LayerShellKeyboard keyboardMode() const override { return LayerShellKeyboard::OnDemand; }
+   [[nodiscard]] bool dismissOnOutsideClick() const override { return true; }
+ 
+-- 
+2.56.0
+

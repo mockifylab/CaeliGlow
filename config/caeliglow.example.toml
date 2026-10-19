@@ -57,3 +57,16 @@ action = "caeliglow_power"
 # show_session_button = true
 # [shell.launcher]
 # show_session_button = true
+
+# --- CaeliGlow motion & docking (patch 0011–0013) ---------------------------------------
+# Everything in this block is also editable in the shell: Settings > CaeliGlow.
+# Values shown are the compiled-in defaults; uncomment and change what you like.
+#
+# [caeliglow]
+# motion = "fizzy"          # panel open animation: "classic" | "soft" | "fizzy" | "morphy"
+#                           # (fizzy/morphy are elastic spring styles with a squash-and-stretch
+#                           #  pulse; classic/soft keep linear-style easing / gentle overshoot)
+# duration_ms = 420         # open animation duration, 80–1500 ms (close is ~60% of it)
+# elasticity = 0.55         # spring strength for fizzy/morphy, 0.0–1.0
+# hover_open = true         # hovering a bar widget opens its panel
+# power_edge = "right"      # which screen edge the power pill docks to: "left" | "right"

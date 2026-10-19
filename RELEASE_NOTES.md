@@ -1,4 +1,4 @@
-# CaeliGlow 1.4.0
+# CaeliGlow 1.5.0
 
 **CaeliGlow** — a polished, **Noctalia-based** desktop shell for **CachyOS + Hyprland**.
 A small, documented **patch series over a pinned Noctalia `v5.3.0`**, rebuilt from source.
@@ -8,7 +8,35 @@ distinct, **visible-by-default** interactions.
 > **Not a rewrite, not a plugin.** Additive by default, reversible in one command, and it
 > never overwrites your distro `noctalia` package or touches boot/EFI/partitions.
 
-## What's new in 1.4.0
+## What's new in 1.5.0
+
+- **The launcher is docked to the bottom edge.** No more floating panel: it sits flush
+  against the bottom of the screen with **concave screen-edge corners** — the curves bend
+  *into* the display so the panel and the edge read as one surface (patch 0009).
+- **Right-edge panels dock the same way.** The power pill (and any edge-docked panel)
+  opens flush to the screen edge with matching concave corners, Caelestia-panel style —
+  re-implemented from scratch, no GPL code or assets (patch 0012). **New setting:** the
+  pill can dock to the **left or right** edge (`power_edge`).
+- **Fizzy & Morphy spring motion.** Opening panels no longer slide linearly — they pop
+  with elastic, fluid spring easing and a squash-and-stretch pulse keyed to the reveal
+  edge. Four motion styles (Classic · Soft · Fizzy · Morphy) with duration and elasticity
+  controls, all config-driven (patch 0011).
+- **A real CaeliGlow section in Settings.** Global Settings › **CaeliGlow** (sparkles
+  icon, theme-aware like every other section): motion style, duration, elasticity
+  (shown only for Fizzy/Morphy), hover-to-open toggle, and the pill's dock edge — every
+  CaeliGlow behavior now has a control (patch 0013).
+- **Edge-hover flicker fixed.** The bottom/right triggers no longer re-fire while you
+  move back into a panel you just opened — open panels stay open, and a short re-trigger
+  cooldown stops the open/close stutter (patch 0010).
+- **Fully CaeliGlow-branded UI.** The launcher's settings button is now the animated
+  CaeliGlow logo (idle animation, hover spin), and every remaining user-facing
+  "Noctalia" string — notifications, settings text, window title, icon — reads
+  **CaeliGlow** (patch 0014).
+- **Updates install in place.** Settings › About → "Install vX now" runs the
+  CaeliGlow quick-install in a terminal: the new release replaces the running one,
+  keeping your settings and state. One explicit click, no manual commands (patch 0015).
+
+## What's new in 1.4.0 (still in this release)
 
 - **CaeliGlow now has its own configuration and customization — by default.** It no
   longer reads or writes Noctalia's `~/.config/noctalia` / `~/.local/state/noctalia`
@@ -70,6 +98,12 @@ carries the same animated mark as its avatar.
 All persistent state and runtime IPC live under `caeliglow` paths, isolated from stock
 Noctalia in both directions — safe to install, safe to run beside, safe to remove.
 
+### Edge-docked surfaces & spring motion (patches 0009–0013)
+The launcher docks to the bottom edge and the pill docks to a screen edge (left or
+right), both with concave screen-edge corners. Panels open with elastic spring easing
+and a squash-and-stretch pulse — Classic/Soft/Fizzy/Morphy, all tunable from the new
+Settings › CaeliGlow section (`[caeliglow]` in `config.toml`).
+
 ## Configuration
 
 The signature interactions are enabled by **compiled-in defaults** — a stock CaeliGlow
@@ -94,12 +128,13 @@ See [docs/BUILDING.md](docs/BUILDING.md) and [docs/UPDATING.md](docs/UPDATING.md
 
 ## Verification
 
-- Patches 0001–0008 rebuild + relink cleanly against the pinned tree.
-- Noctalia `meson test` suite: **153/153 pass, 0 fail**.
+- Patches 0001–0015 rebuild + relink cleanly against the pinned tree.
+- Noctalia `meson test` suite: **153/153 pass, 0 fail** (with the `[caeliglow]` schema
+  round-trip probe added).
 - Version/update logic unit tests pass (locally and in CI).
 - Nested Hyprland smoke test: the shell starts and runs stable with hover-to-open,
   edge actions, the power pill and the About page active; the host session is untouched.
-- Full `0001→0008` series applies onto a pristine v5.3.0 via `git am --3way`,
+- Full `0001→0015` series applies onto a pristine v5.3.0 via `git am --3way`,
   reconstructing the tree byte-for-byte.
 - Example config validates against the patched binary.
 - **On-device smoke test** (live Hyprland, multi-monitor/fractional scaling) is still to

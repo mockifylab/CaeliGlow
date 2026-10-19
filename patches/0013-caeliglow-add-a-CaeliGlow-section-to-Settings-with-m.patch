@@ -1,0 +1,269 @@
+From bb159063403f5452086355fe7fcca095fe2cf3bf Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 15:34:57 +0500
+Subject: [PATCH] caeliglow: add a CaeliGlow section to Settings with motion
+ and behavior controls
+
+The sidebar gains a CaeliGlow section (sparkles glyph) wired to the
+[caeliglow] schema: motion language, open duration and elasticity
+sliders (bounds shared with the parser via ranges.h), hover-to-open,
+and a new power_edge setting that docks the session pill to the left
+or right screen edge. About now reads "About" so the brand section
+owns the CaeliGlow name.
+---
+ assets/translations/en.json                 | 37 ++++++++++++++++-
+ src/config/config_types.h                   |  8 ++++
+ src/config/schema/config_schema.cpp         |  5 ++-
+ src/config/schema/ranges.h                  |  3 ++
+ src/shell/session/caeliglow_power_panel.cpp |  8 ++++
+ src/shell/session/caeliglow_power_panel.h   |  8 ++--
+ src/shell/settings/settings_registry.cpp    | 46 ++++++++++++++++++++-
+ src/shell/settings/settings_registry.h      |  1 +
+ 8 files changed, 108 insertions(+), 8 deletions(-)
+
+diff --git a/assets/translations/en.json b/assets/translations/en.json
+index 103bf6527..aa41d34b1 100644
+--- a/assets/translations/en.json
++++ b/assets/translations/en.json
+@@ -1419,11 +1419,12 @@
+         "window-switcher": "Window Switcher"
+       },
+       "sections": {
+-        "about": "CaeliGlow",
++        "about": "About",
+         "accessibility": "Accessibility",
+         "appearance": "Appearance",
+         "backdrop": "Backdrop",
+         "bar": "Bar",
++        "caeliglow": "CaeliGlow",
+         "calendar": "Calendar",
+         "control-center": "Control Center",
+         "desktop": "Desktop",
+@@ -1684,6 +1685,18 @@
+           "imperial": "Imperial",
+           "metric": "Metric"
+         }
++      },
++      "caeliglow": {
++        "motion": {
++          "classic": "Classic",
++          "soft": "Soft",
++          "fizzy": "Fizzy",
++          "morphy": "Morphy"
++        },
++        "power-edge": {
++          "left": "Left",
++          "right": "Right"
++        }
+       }
+     },
+     "palette-inspector": {
+@@ -3660,6 +3673,28 @@
+           "description": "Effects available when changing wallpaper (one is picked at random per change)",
+           "label": "Transition Effects"
+         }
++      },
++      "caeliglow": {
++        "motion": {
++          "label": "Panel motion",
++          "description": "Animation language when panels and the launcher open"
++        },
++        "duration-ms": {
++          "label": "Open duration",
++          "description": "How long the open animation takes; closes reuse 60% of it"
++        },
++        "elasticity": {
++          "label": "Spring elasticity",
++          "description": "Overshoot strength of the fizzy and morphy springs"
++        },
++        "hover-open": {
++          "label": "Hover to open",
++          "description": "Hovering a bar widget reveals its panel; it closes when the pointer leaves"
++        },
++        "power-edge": {
++          "label": "Session pill edge",
++          "description": "Which screen edge the session pill docks to with concave corners"
++        }
+       }
+     },
+     "session-actions": {
+diff --git a/src/config/config_types.h b/src/config/config_types.h
+index 0282e6305..71d2301bc 100644
+--- a/src/config/config_types.h
++++ b/src/config/config_types.h
+@@ -1937,6 +1937,9 @@ struct CaeliGlowConfig {
+   //  morphy  — elastic spring plus a squash-and-stretch shape pulse.
+   enum class Motion : std::uint8_t { Classic = 0, Soft = 1, Fizzy = 2, Morphy = 3 };
+   Motion motion = Motion::Fizzy;
++  // Which screen edge the session pill docks to (concave flare on that edge).
++  enum class PowerEdge : std::uint8_t { Left = 0, Right = 1 };
++  PowerEdge powerEdge = PowerEdge::Right;
+   // Open animation length in ms; closes reuse 60% of it (floor 80 ms).
+   std::int32_t durationMs = 420;
+   // Overshoot strength 0..1: how far the spring flies past its resting shape.
+@@ -1955,6 +1958,11 @@ constexpr EnumOption<CaeliGlowConfig::Motion> kCaeliGlowMotions[] = {
+     {CaeliGlowConfig::Motion::Morphy, "morphy", "settings.options.caeliglow.motion.morphy"},
+ };
+ 
++constexpr EnumOption<CaeliGlowConfig::PowerEdge> kCaeliGlowPowerEdges[] = {
++    {CaeliGlowConfig::PowerEdge::Left, "left", "settings.options.caeliglow.power-edge.left"},
++    {CaeliGlowConfig::PowerEdge::Right, "right", "settings.options.caeliglow.power-edge.right"},
++};
++
+ struct Config {
+   std::vector<BarConfig> bars;
+   std::unordered_map<std::string, WidgetConfig> widgets;
+diff --git a/src/config/schema/config_schema.cpp b/src/config/schema/config_schema.cpp
+index cf013a1bc..6afed2753 100644
+--- a/src/config/schema/config_schema.cpp
++++ b/src/config/schema/config_schema.cpp
+@@ -478,8 +478,9 @@ namespace noctalia::config::schema {
+   const Schema<CaeliGlowConfig>& caeliglowSchema() {
+     static const Schema<CaeliGlowConfig> s = {
+         enumField(&CaeliGlowConfig::motion, "motion", kCaeliGlowMotions),
+-        field(&CaeliGlowConfig::durationMs, "duration_ms", Range<std::int64_t>{80, 1500}),
+-        field(&CaeliGlowConfig::elasticity, "elasticity", Range<float>{0.0F, 1.0F}),
++        enumField(&CaeliGlowConfig::powerEdge, "power_edge", kCaeliGlowPowerEdges),
++        field(&CaeliGlowConfig::durationMs, "duration_ms", kCaeliGlowDurationRange),
++        field(&CaeliGlowConfig::elasticity, "elasticity", kCaeliGlowElasticityRange),
+         field(&CaeliGlowConfig::hoverOpen, "hover_open"),
+     };
+     return s;
+diff --git a/src/config/schema/ranges.h b/src/config/schema/ranges.h
+index f43083e02..57d8f9cef 100644
+--- a/src/config/schema/ranges.h
++++ b/src/config/schema/ranges.h
+@@ -24,6 +24,9 @@ namespace noctalia::config::schema {
+   inline constexpr Range<std::int64_t> kNotificationWidthRange{240, 500, 10};
+   inline constexpr Range<std::int64_t> kScreenCornersSizeRange{1, 100, 1};
+   inline constexpr Range<std::int64_t> kHotCornersDelayMsRange{0, 2000, 50};
++  // CaeliGlow: [caeliglow] panel motion timing and spring overshoot.
++  inline constexpr Range<std::int64_t> kCaeliGlowDurationRange{80, 1500, 20};
++  inline constexpr Range<float> kCaeliGlowElasticityRange{0.0F, 1.0F, 0.05F};
+   inline constexpr Range<std::int64_t> kClipboardHistoryMaxEntriesRange{
+       noctalia::config::kClipboardHistoryMinEntries,
+       noctalia::config::kClipboardHistoryMaxEntries,
+diff --git a/src/shell/session/caeliglow_power_panel.cpp b/src/shell/session/caeliglow_power_panel.cpp
+index 6a76f190a..f3f186477 100644
+--- a/src/shell/session/caeliglow_power_panel.cpp
++++ b/src/shell/session/caeliglow_power_panel.cpp
+@@ -34,6 +34,14 @@ CaeliGlowPowerPanel::CaeliGlowPowerPanel(ConfigService* config, SessionActionRun
+ 
+ CaeliGlowPowerPanel::~CaeliGlowPowerPanel() = default;
+ 
++std::string CaeliGlowPowerPanel::dockToScreenEdge() const {
++  if (m_config == nullptr) {
++    return "right";
++  }
++  using Edge = CaeliGlowConfig::PowerEdge;
++  return m_config->config().caeliglow.powerEdge == Edge::Left ? "left" : "right";
++}
++
+ float CaeliGlowPowerPanel::preferredWidth() const {
+   return scaled(kLogoSize + Style::panelPadding * 2.0F);
+ }
+diff --git a/src/shell/session/caeliglow_power_panel.h b/src/shell/session/caeliglow_power_panel.h
+index 69ae6b673..af67d1795 100644
+--- a/src/shell/session/caeliglow_power_panel.h
++++ b/src/shell/session/caeliglow_power_panel.h
+@@ -45,10 +45,10 @@ public:
+ 
+   [[nodiscard]] PanelPlacement panelPlacement() const noexcept override { return PanelPlacement::Floating; }
+   [[nodiscard]] std::string panelScreenPosition() const override { return "center_right"; }
+-  // CaeliGlow: the pill docks flush to the screen's right edge; its right-side
+-  // corners render concave with the flare clipped by the edge (matches the
+-  // bottom-docked launcher language).
+-  [[nodiscard]] std::string dockToScreenEdge() const override { return "right"; }
++  // CaeliGlow: the pill docks flush to a vertical screen edge ([caeliglow] power_edge,
++  // right by default); the corners on that edge render concave with the flare clipped
++  // by the edge (matches the bottom-docked launcher language).
++  [[nodiscard]] std::string dockToScreenEdge() const override;
+   [[nodiscard]] LayerShellKeyboard keyboardMode() const override { return LayerShellKeyboard::OnDemand; }
+   [[nodiscard]] bool dismissOnOutsideClick() const override { return true; }
+ 
+diff --git a/src/shell/settings/settings_registry.cpp b/src/shell/settings/settings_registry.cpp
+index a6219424d..f5b97af3a 100644
+--- a/src/shell/settings/settings_registry.cpp
++++ b/src/shell/settings/settings_registry.cpp
+@@ -86,7 +86,7 @@ namespace settings {
+       return defaultKeybindSet(action);
+     }
+ 
+-    constexpr std::array<SettingsSectionDescriptor, 25> kSettingsSections{{
++    constexpr std::array<SettingsSectionDescriptor, 26> kSettingsSections{{
+         {SettingsSection::Appearance, "appearance", "adjustments-horizontal"},
+         {SettingsSection::Wallpaper, "wallpaper", "paint"},
+         {SettingsSection::Templates, "templates", "color-swatch"},
+@@ -110,6 +110,7 @@ namespace settings {
+         {SettingsSection::Niri, "niri", "niri"},
+         {SettingsSection::Umbriel, "umbriel", "umbriel"},
+         {SettingsSection::Bar, "bar", "crop-3-2", false},
++        {SettingsSection::CaeliGlow, "caeliglow", "sparkles"},
+         {SettingsSection::Plugins, "plugins", "puzzle", true, true},
+         {SettingsSection::About, "about", "info-circle", true, true},
+     }};
+@@ -4166,6 +4167,49 @@ namespace settings {
+       }
+     }
+ 
++    // CaeliGlow: [caeliglow] — the signature layer's motion language and behaviors.
++    entries.push_back(makeEntry(
++        SettingsSection::CaeliGlow, "motion", tr("settings.schema.caeliglow.motion.label"),
++        tr("settings.schema.caeliglow.motion.description"), {"caeliglow", "motion"},
++        asSegmented(enumSelect(kCaeliGlowMotions, cfg.caeliglow.motion)),
++        "animation spring bounce fizzy morphy open panel motion"
++    ));
++    {
++      SliderSetting duration =
++          sliderFor(cfg.caeliglow.durationMs, noctalia::config::schema::kCaeliGlowDurationRange, true);
++      duration.valueSuffix = "ms";
++      entries.push_back(makeEntry(
++          SettingsSection::CaeliGlow, "motion", tr("settings.schema.caeliglow.duration-ms.label"),
++          tr("settings.schema.caeliglow.duration-ms.description"), {"caeliglow", "duration_ms"},
++          std::move(duration), "animation speed open panel ms duration timing"
++      ));
++    }
++    {
++      SliderSetting elasticity =
++          sliderFor(cfg.caeliglow.elasticity, noctalia::config::schema::kCaeliGlowElasticityRange, false);
++      SettingEntry e = makeEntry(
++          SettingsSection::CaeliGlow, "motion", tr("settings.schema.caeliglow.elasticity.label"),
++          tr("settings.schema.caeliglow.elasticity.description"), {"caeliglow", "elasticity"},
++          std::move(elasticity), "spring bounce overshoot fizzy morphy strength squash"
++      );
++      e.visibleWhen = [](const Config& conf) {
++        return conf.caeliglow.motion == CaeliGlowConfig::Motion::Fizzy
++            || conf.caeliglow.motion == CaeliGlowConfig::Motion::Morphy;
++      };
++      entries.push_back(std::move(e));
++    }
++    entries.push_back(makeEntry(
++        SettingsSection::CaeliGlow, "behavior", tr("settings.schema.caeliglow.hover-open.label"),
++        tr("settings.schema.caeliglow.hover-open.description"), {"caeliglow", "hover_open"},
++        ToggleSetting{cfg.caeliglow.hoverOpen}, "hover mouse reveal panel bar widget open"
++    ));
++    entries.push_back(makeEntry(
++        SettingsSection::CaeliGlow, "behavior", tr("settings.schema.caeliglow.power-edge.label"),
++        tr("settings.schema.caeliglow.power-edge.description"), {"caeliglow", "power_edge"},
++        asSegmented(enumSelect(kCaeliGlowPowerEdges, cfg.caeliglow.powerEdge)),
++        "session pill power panel edge left right dock screen"
++    ));
++
+     // Integrity guard: every override path must resolve to a real schema key, else
+     // the entry silently reads/writes a dead override. Build-determined, so checked
+     // once per process; warn-only. (Visibility predicates are compiler-checked.)
+diff --git a/src/shell/settings/settings_registry.h b/src/shell/settings/settings_registry.h
+index 1f8b9261d..de25d3b23 100644
+--- a/src/shell/settings/settings_registry.h
++++ b/src/shell/settings/settings_registry.h
+@@ -48,6 +48,7 @@ namespace settings {
+     Umbriel,
+     Bar,
+     Plugins,
++    CaeliGlow, // CaeliGlow: [caeliglow] behavior + motion controls
+     About,  // CaeliGlow: native About + update-check section
+   };
+ 
+-- 
+2.56.0
+

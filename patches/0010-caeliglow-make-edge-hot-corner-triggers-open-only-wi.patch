@@ -1,0 +1,131 @@
+From ba24c097448ebb0c4a2badae0dca70101f3214a1 Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 15:13:03 +0500
+Subject: [PATCH] caeliglow: make edge hot-corner triggers open-only with a
+ retrigger cooldown
+
+Hovering the bottom/right edge triggers flickered because re-entering an
+armed corner toggled the panel closed and open again. Hot corners now
+only fire their action when the target panel is not already open, and a
+short per-corner cooldown latch prevents rapid re-triggers.
+---
+ src/app/application.h                 |  5 +++++
+ src/app/application_services.cpp      | 18 ++++++++++++++++++
+ src/shell/hot_corners/hot_corners.cpp | 22 +++++++++++++++++++++-
+ src/shell/hot_corners/hot_corners.h   |  3 +++
+ 4 files changed, 47 insertions(+), 1 deletion(-)
+
+diff --git a/src/app/application.h b/src/app/application.h
+index b92b4407d..98b262d51 100644
+--- a/src/app/application.h
++++ b/src/app/application.h
+@@ -160,6 +160,11 @@ public:
+ 
+   bool runShellCommand(const std::string& command);
+   void triggerShellAction(const std::string& action, wl_output* output = nullptr);
++  // CaeliGlow: true when the panel targeted by a shell action id (launcher,
++  // control_center, power, caeliglow_power) is currently open. Hot-edge triggers
++  // use this for open-only semantics so re-entering an edge never toggles the
++  // panel closed (the bottom/right hover flicker).
++  [[nodiscard]] bool isShellActionPanelOpen(const std::string& action) const;
+   // Highest layer-shell layer occupied by any bar on the given output. Hot
+   // corners place their trigger surfaces on this layer.
+   [[nodiscard]] LayerShellLayer hotCornerLayerForOutput(wl_output* output) const noexcept;
+diff --git a/src/app/application_services.cpp b/src/app/application_services.cpp
+index dec7f48d1..d5d9ce8c2 100644
+--- a/src/app/application_services.cpp
++++ b/src/app/application_services.cpp
+@@ -1712,3 +1712,21 @@ void Application::triggerShellAction(const std::string& action, wl_output* outpu
+     m_windowSwitcher.show(output);
+   }
+ }
++
++bool Application::isShellActionPanelOpen(const std::string& action) const {
++  // CaeliGlow: mirrors the action→panel mapping in triggerShellAction above so
++  // edge triggers can adopt open-only semantics (no toggle-close on re-enter).
++  if (action == "launcher") {
++    return m_panelManager.isOpenPanel("launcher");
++  }
++  if (action == "control_center") {
++    return m_panelManager.isOpenPanel("control-center");
++  }
++  if (action == "power") {
++    return m_panelManager.isOpenPanel("session");
++  }
++  if (action == "caeliglow_power") {
++    return m_panelManager.isOpenPanel("caeliglow:power");
++  }
++  return false;
++}
+diff --git a/src/shell/hot_corners/hot_corners.cpp b/src/shell/hot_corners/hot_corners.cpp
+index b57b111f0..94fcec3d1 100644
+--- a/src/shell/hot_corners/hot_corners.cpp
++++ b/src/shell/hot_corners/hot_corners.cpp
+@@ -17,6 +17,12 @@ namespace {
+   // barely intercept pointer input over surfaces beneath it.
+   constexpr std::int32_t kTriggerZoneSize = 2;
+ 
++  // CaeliGlow: after a trigger fires, ignore further enters on the same trigger for
++  // this long. Opening a panel moves surfaces under the pointer; the resulting
++  // leave/enter pair used to re-fire the toggle and close the panel again — the
++  // bottom/right edge hover flicker.
++  constexpr std::chrono::milliseconds kRetriggerCooldown{400};
++
+   void cornerAction(const HotCornersConfig& config, int position, std::string& action, std::string& command) {
+     if (position == 0) {
+       action = config.topLeft.action;
+@@ -150,15 +156,29 @@ void HotCorners::armCorner(Corner& corner, int position, wl_output* output) {
+   std::string command;
+   cornerAction(config, position, action, command);
+ 
++  // CaeliGlow: open-only semantics for panel actions. While the target panel is
++  // already visible, re-entering the trigger must not toggle it closed; dismissal
++  // stays the job of Escape, the outside click, or the keybind. The cooldown latch
++  // additionally debounces rapid enter/leave pairs as the pointer skims the edge.
++  if (m_app != nullptr && m_app->isShellActionPanelOpen(action)) {
++    return;
++  }
++  const auto now = std::chrono::steady_clock::now();
++  if (corner.lastTriggerAt.time_since_epoch().count() > 0 && now - corner.lastTriggerAt < kRetriggerCooldown) {
++    return;
++  }
++
+   const std::int32_t delayMs = std::max(0, config.delayMs);
+   if (delayMs <= 0) {
+     corner.triggerTimer.stop();
++    corner.lastTriggerAt = now;
+     triggerAction(action, command, output);
+     return;
+   }
+ 
+   corner.triggerTimer.start(
+-      std::chrono::milliseconds(delayMs), [this, action = std::move(action), command = std::move(command), output]() {
++      std::chrono::milliseconds(delayMs), [this, &corner, action = std::move(action), command = std::move(command), output]() {
++        corner.lastTriggerAt = std::chrono::steady_clock::now();
+         triggerAction(action, command, output);
+       }
+   );
+diff --git a/src/shell/hot_corners/hot_corners.h b/src/shell/hot_corners/hot_corners.h
+index 99502af5c..c51f05b97 100644
+--- a/src/shell/hot_corners/hot_corners.h
++++ b/src/shell/hot_corners/hot_corners.h
+@@ -6,6 +6,7 @@
+ #include "wayland/layer_surface.h"
+ #include "wayland/wayland_seat.h"
+ 
++#include <chrono>
+ #include <memory>
+ #include <string>
+ #include <vector>
+@@ -35,6 +36,8 @@ private:
+     std::unique_ptr<Node> sceneRoot;
+     InputDispatcher inputDispatcher;
+     Timer triggerTimer;
++    // CaeliGlow: last time this trigger fired, for the re-enter debounce latch.
++    std::chrono::steady_clock::time_point lastTriggerAt{};
+   };
+ 
+   struct OutputInstance {
+-- 
+2.56.0
+

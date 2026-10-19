@@ -1,0 +1,248 @@
+From b0d2c52b5de7bb84869db68be4589bd8ddf8f898 Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 15:13:03 +0500
+Subject: [PATCH] caeliglow: add [caeliglow] config section with motion
+ settings and elastic easing
+
+New [caeliglow] table: motion (classic/soft/fizzy/morphy), duration_ms,
+elasticity, hover_open. Adds the EaseOutElastic easing curve used by the
+fizzy/morphy springs and gates bar hover-reveal on hover_open.
+---
+ src/config/config_overrides.cpp        |  2 ++
+ src/config/config_service.cpp          |  1 +
+ src/config/config_types.h              | 32 ++++++++++++++++++++++++++
+ src/config/schema/config_schema.cpp    | 12 ++++++++++
+ src/config/schema/config_schema.h      |  2 ++
+ src/config/schema/config_sections.cpp  |  2 ++
+ src/render/animation/animation.cpp     | 14 +++++++++++
+ src/render/animation/animation.h       |  2 ++
+ src/shell/bar/bar.cpp                  |  4 +++-
+ tests/config_schema_roundtrip_test.cpp |  7 ++++++
+ 10 files changed, 77 insertions(+), 1 deletion(-)
+
+diff --git a/src/config/config_overrides.cpp b/src/config/config_overrides.cpp
+index 1dafd47e6..467ad744e 100644
+--- a/src/config/config_overrides.cpp
++++ b/src/config/config_overrides.cpp
+@@ -399,6 +399,7 @@ namespace {
+         && widgetMapEqual(a.widgets, b.widgets)
+         && desktopWidgetsConfigEqual(a.desktopWidgets, b.desktopWidgets)
+         && a.hotCorners == b.hotCorners
++        && a.caeliglow == b.caeliglow
+         && lockscreenWidgetsConfigEqual(a.lockscreenWidgets, b.lockscreenWidgets)
+         && a.wallpaper == b.wallpaper
+         && a.backdrop == b.backdrop
+@@ -902,6 +903,7 @@ ConfigChangeSet computeConfigChangeSet(const Config& prev, const Config& next) {
+       .controlCenter = !(prev.controlCenter == next.controlCenter),
+       .plugins = !pluginsConfigEqual(prev.plugins, next.plugins),
+       .hotCorners = !(prev.hotCorners == next.hotCorners),
++      .caeliglow = !(prev.caeliglow == next.caeliglow),
+       .storage = !(prev.storage == next.storage),
+       .accessibility = !(prev.accessibility == next.accessibility),
+   };
+diff --git a/src/config/config_service.cpp b/src/config/config_service.cpp
+index 4e8497446..808ddb33d 100644
+--- a/src/config/config_service.cpp
++++ b/src/config/config_service.cpp
+@@ -637,6 +637,7 @@ void ConfigService::fireReloadCallbacks() {
+     add(m_lastChange.widgets, "widgets");
+     add(m_lastChange.desktopWidgets, "desktopWidgets");
+     add(m_lastChange.hotCorners, "hotCorners");
++    add(m_lastChange.caeliglow, "caeliglow");
+     add(m_lastChange.lockscreenWidgets, "lockscreenWidgets");
+     add(m_lastChange.wallpaper, "wallpaper");
+     add(m_lastChange.backdrop, "backdrop");
+diff --git a/src/config/config_types.h b/src/config/config_types.h
+index 7b1505065..0282e6305 100644
+--- a/src/config/config_types.h
++++ b/src/config/config_types.h
+@@ -1926,6 +1926,35 @@ struct HotCornersConfig {
+   bool operator==(const HotCornersConfig&) const = default;
+ };
+ 
++// CaeliGlow: [caeliglow] — the behavior and motion of CaeliGlow's signature layer.
++// Everything CaeliGlow adds on top of the base shell is controlled here (and from
++// the CaeliGlow section in Settings), with theme-aware UI like the other sections.
++struct CaeliGlowConfig {
++  // Panel open/close motion language:
++  //  classic — the base shell's smooth cubic slide.
++  //  soft    — one gentle overshoot that settles back (back easing).
++  //  fizzy   — bubbly multi-bounce spring (elastic easing).
++  //  morphy  — elastic spring plus a squash-and-stretch shape pulse.
++  enum class Motion : std::uint8_t { Classic = 0, Soft = 1, Fizzy = 2, Morphy = 3 };
++  Motion motion = Motion::Fizzy;
++  // Open animation length in ms; closes reuse 60% of it (floor 80 ms).
++  std::int32_t durationMs = 420;
++  // Overshoot strength 0..1: how far the spring flies past its resting shape.
++  float elasticity = 0.55F;
++  // Hovering a bar widget opens its panel (short dwell); the panel closes when
++  // the pointer leaves both the widget and the panel.
++  bool hoverOpen = true;
++
++  bool operator==(const CaeliGlowConfig&) const = default;
++};
++
++constexpr EnumOption<CaeliGlowConfig::Motion> kCaeliGlowMotions[] = {
++    {CaeliGlowConfig::Motion::Classic, "classic", "settings.options.caeliglow.motion.classic"},
++    {CaeliGlowConfig::Motion::Soft, "soft", "settings.options.caeliglow.motion.soft"},
++    {CaeliGlowConfig::Motion::Fizzy, "fizzy", "settings.options.caeliglow.motion.fizzy"},
++    {CaeliGlowConfig::Motion::Morphy, "morphy", "settings.options.caeliglow.motion.morphy"},
++};
++
+ struct Config {
+   std::vector<BarConfig> bars;
+   std::unordered_map<std::string, WidgetConfig> widgets;
+@@ -1936,6 +1965,7 @@ struct Config {
+   DockConfig dock;
+   DesktopWidgetsConfig desktopWidgets;
+   HotCornersConfig hotCorners;
++  CaeliGlowConfig caeliglow;
+   StorageConfig storage;
+   ShellConfig shell;
+   OsdConfig osd;
+@@ -1986,6 +2016,7 @@ struct ConfigChangeSet {
+   bool controlCenter = true;
+   bool plugins = true;
+   bool hotCorners = true;
++  bool caeliglow = true; // CaeliGlow: [caeliglow] section changed
+   bool storage = true;
+   bool accessibility = true;
+ 
+@@ -2016,6 +2047,7 @@ struct ConfigChangeSet {
+         || controlCenter
+         || plugins
+         || hotCorners
++        || caeliglow
+         || storage
+         || accessibility;
+   }
+diff --git a/src/config/schema/config_schema.cpp b/src/config/schema/config_schema.cpp
+index 38c03ef4d..cf013a1bc 100644
+--- a/src/config/schema/config_schema.cpp
++++ b/src/config/schema/config_schema.cpp
+@@ -473,6 +473,18 @@ namespace noctalia::config::schema {
+     return s;
+   }
+ 
++  // CaeliGlow: [caeliglow] — motion language, timing, and hover behavior of the
++  // signature layer. Ranges double as the Settings sliders' bounds.
++  const Schema<CaeliGlowConfig>& caeliglowSchema() {
++    static const Schema<CaeliGlowConfig> s = {
++        enumField(&CaeliGlowConfig::motion, "motion", kCaeliGlowMotions),
++        field(&CaeliGlowConfig::durationMs, "duration_ms", Range<std::int64_t>{80, 1500}),
++        field(&CaeliGlowConfig::elasticity, "elasticity", Range<float>{0.0F, 1.0F}),
++        field(&CaeliGlowConfig::hoverOpen, "hover_open"),
++    };
++    return s;
++  }
++
+   namespace {
+     const Schema<BrightnessMonitorOverride>& brightnessMonitorSchema() {
+       static const Schema<BrightnessMonitorOverride> s = {
+diff --git a/src/config/schema/config_schema.h b/src/config/schema/config_schema.h
+index a3daeb6be..a3336929b 100644
+--- a/src/config/schema/config_schema.h
++++ b/src/config/schema/config_schema.h
+@@ -25,6 +25,8 @@ namespace noctalia::config::schema {
+   const Schema<ControlCenterConfig>& controlCenterSchema();
+   const Schema<PluginsConfig>& pluginsSchema();
+   const Schema<HotCornersConfig>& hotCornersSchema();
++  // CaeliGlow: [caeliglow] section schema.
++  const Schema<CaeliGlowConfig>& caeliglowSchema();
+   const Schema<CalendarConfig::Reminders>& calendarRemindersSchema();
+   const Schema<CalendarConfig>& calendarSchema();
+   const Schema<KeybindsConfig>& keybindsSchema();
+diff --git a/src/config/schema/config_sections.cpp b/src/config/schema/config_sections.cpp
+index 2b8aaeece..a4609cdc0 100644
+--- a/src/config/schema/config_sections.cpp
++++ b/src/config/schema/config_sections.cpp
+@@ -66,6 +66,8 @@ namespace noctalia::config::schema {
+         t.push_back(makeSection("keybinds", &Config::keybinds, keybindsSchema()));
+         t.push_back(makeSection("dock", &Config::dock, dockSchema()));
+         t.push_back(makeSection("hot_corners", &Config::hotCorners, hotCornersSchema()));
++        // CaeliGlow: signature behavior & motion section.
++        t.push_back(makeSection("caeliglow", &Config::caeliglow, caeliglowSchema()));
+         t.push_back(makeSection("control_center", &Config::controlCenter, controlCenterSchema()));
+         t.push_back(makeSection("plugins", &Config::plugins, pluginsSchema()));
+         t.push_back(makeSection("hooks", &Config::hooks, hooksSchema()));
+diff --git a/src/render/animation/animation.cpp b/src/render/animation/animation.cpp
+index f94e44b8c..e601b6b1b 100644
+--- a/src/render/animation/animation.cpp
++++ b/src/render/animation/animation.cpp
+@@ -1,6 +1,7 @@
+ #include "render/animation/animation.h"
+ 
+ #include <algorithm>
++#include <cmath>
+ 
+ float applyEasing(Easing easing, float t) {
+   t = std::clamp(t, 0.0F, 1.0F);
+@@ -40,6 +41,19 @@ float applyEasing(Easing easing, float t) {
+     const float f = t - 1.0F;
+     return 1.0F + c3 * f * f * f + c1 * f * f;
+   }
++
++  case Easing::EaseOutElastic: {
++    // CaeliGlow: damped sine spring — the value crosses its target several times
++    // with decaying amplitude (classic easeOutElastic, period 0.3s).
++    if (t <= 0.0F) {
++      return 0.0F;
++    }
++    if (t >= 1.0F) {
++      return 1.0F;
++    }
++    constexpr float c4 = 2.0943951F; // 2*pi/3
++    return std::pow(2.0F, -10.0F * t) * std::sin((t * 10.0F - 0.75F) * c4) + 1.0F;
++  }
+   }
+ 
+   return t;
+diff --git a/src/render/animation/animation.h b/src/render/animation/animation.h
+index 5512c5ad0..b8321a64f 100644
+--- a/src/render/animation/animation.h
++++ b/src/render/animation/animation.h
+@@ -12,6 +12,8 @@ enum class Easing : std::uint8_t {
+   EaseOutCubic,
+   EaseInOutCubic,
+   EaseOutBack,
++  // CaeliGlow: damped-sine spring overshoot ("fizzy"/"morphy" motion).
++  EaseOutElastic,
+ };
+ 
+ float applyEasing(Easing easing, float t);
+diff --git a/src/shell/bar/bar.cpp b/src/shell/bar/bar.cpp
+index 99fc077ae..b6e7f230a 100644
+--- a/src/shell/bar/bar.cpp
++++ b/src/shell/bar/bar.cpp
+@@ -2975,7 +2975,9 @@ void Bar::animateWidgetHoverHighlight(BarInstance& instance, Widget& widget, boo
+ }
+ 
+ void Bar::handleWidgetHoverReveal(BarInstance& instance, InputArea* hoveredArea) {
+-  if (!kHoverRevealEnabled) {
++  // CaeliGlow: [caeliglow] hover_open controls this behavior; the compile-time
++  // constant stays as the kill switch for experiments.
++  if (!kHoverRevealEnabled || (m_config != nullptr && !m_config->config().caeliglow.hoverOpen)) {
+     return;
+   }
+   Widget* hovered = widgetFromHoveredArea(instance, hoveredArea);
+diff --git a/tests/config_schema_roundtrip_test.cpp b/tests/config_schema_roundtrip_test.cpp
+index a5fabb538..00aa3035d 100644
+--- a/tests/config_schema_roundtrip_test.cpp
++++ b/tests/config_schema_roundtrip_test.cpp
+@@ -616,6 +616,13 @@ location = "https://example.invalid/bad"
+     c.hotCorners.topLeft = {.action = "launcher", .command = ""};
+     c.hotCorners.bottomRight = {.action = "command", .command = "notify-send corner"};
+ 
++    // CaeliGlow: [caeliglow] — every field at a non-default value.
++    c.caeliglow.motion = CaeliGlowConfig::Motion::Morphy;
++    c.caeliglow.powerEdge = CaeliGlowConfig::PowerEdge::Left;
++    c.caeliglow.durationMs = 600;
++    c.caeliglow.elasticity = 0.8F;
++    c.caeliglow.hoverOpen = false;
++
+     // pluginSettings is not part of pluginsSchema ([plugin_settings] is its own root
+     // key), so the section round-trip covers sources + enabled + auto_update only.
+     c.plugins.sources = {
+-- 
+2.56.0
+

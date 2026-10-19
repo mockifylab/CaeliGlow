@@ -6,11 +6,55 @@ from the single canonical `VERSION` file.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-19
+
+CaeliGlow docks to the screen. The launcher and side panels now join the screen
+edges with concave corners (the Caelestia-style fitted look), panel opening gets a
+spring physics you can feel — and all of it is controlled from a dedicated CaeliGlow
+section in Settings.
+
+### Added
+- **Bottom-docked launcher with concave screen-edge corners (patch 0009).** The
+  compiled default is now the signature layout: bottom bar, launcher attached
+  edge-to-edge; the corners where it meets the screen edges curve inward and the
+  panel visually melts into the edge.
+- **Right-edge docking for panels (patch 0012).** The session pill docks flush to
+  the right screen edge with the same concave treatment (`Panel::dockToScreenEdge()`).
+- **`[caeliglow]` config section (patch 0011).** `motion` = classic / soft / fizzy /
+  morphy, `duration_ms` (80–1500), `elasticity` (0–1), `hover_open`, `power_edge`
+  (left / right) — all validated through the schema and all exposed in Settings.
+- **Fizzy & morphy spring animations (patches 0011–0012).** Opens use an elastic
+  damped-sine easing plus a squash-and-stretch pulse (stronger for morphy); closes
+  reuse 60% of the duration. No more linear slide — and every parameter is configurable.
+- **CaeliGlow section in Settings (patch 0013).** Motion picker, duration/elasticity
+  sliders, hover-to-open toggle and session-pill edge selector, themed and styled
+  exactly like the global settings UI.
+- **Launcher settings button is now the animated CaeliGlow logo (patch 0014).**
+- **Settings → About “Install vX now” (patch 0015).** An available update installs
+  in place: the quick-install one-liner runs in a terminal window and replaces the
+  running version; config and state are untouched.
+
+### Fixed
+- **Bottom/right edge hover flicker (patch 0010).** Hot-corner triggers are now
+  open-only with a 400 ms cooldown, so a panel covering its own trigger no longer
+  toggles closed and back as the pointer re-enters.
+
+### Changed
+- Every user-facing “Noctalia” string in the UI is now CaeliGlow (patch 0014);
+  identifiers (app id, palette keys, noctalia.dev URLs, greeter commands) are kept
+  so system integration and existing configs keep working. The About sidebar entry
+  is now “About” — the brand section owns the CaeliGlow name.
 - One-command install: `scripts/quick-install.sh` (clone → patch series → release build →
   `/usr/local/bin/caeliglow`), with `scripts/uninstall.sh` as its symmetric remover.
 - `pkgbuild/PKGBUILD`: AUR-ready Arch package `caeliglow` (installs/removes via pacman,
   zero file overlap with the distro `noctalia` package).
 - README / docs/BUILDING.md document both install paths.
+
+### Verified in this release
+- Full debug rebuild + link clean; `meson test` **153/153 pass, 0 fail** (schema
+  round-trip probe extended to cover all `[caeliglow]` fields).
+- Series `0001→0015` applies cleanly onto a pristine v5.3.0 via `git am --3way` and
+  the resulting tree is byte-identical to the development branch.
 
 ## [1.4.0] - 2026-10-19
 

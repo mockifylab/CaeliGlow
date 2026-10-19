@@ -1,0 +1,148 @@
+From 4ba9f349d9864f47f737552b943eb99881784d83 Mon Sep 17 00:00:00 2001
+From: CaeliGlow <caeliglow@mockifylab.local>
+Date: Mon, 19 Oct 2026 14:46:16 +0500
+Subject: [PATCH] caeliglow: dock the launcher to the bottom bar edge-to-edge
+ with concave screen-edge corners
+
+The signature CaeliGlow layout replaces the floating launcher card: the
+bar defaults to the bottom edge, the launcher defaults to attached
+placement, and attached panels now honor fillsWidth()/fillsHeight() by
+spanning the full output on the bar cross axis. The concave bar-side
+corners keep their flare; at the screen edges the flare is clipped by
+the compositor, which reads as the panel melting into the screen edge
+(Caelestia-style dock, reimplemented clean-room). Set
+launcher_placement = "floating" to restore the classic card.
+---
+ src/config/config_types.h             |  9 ++++--
+ src/shell/launcher/launcher_panel.cpp |  6 ++++
+ src/shell/launcher/launcher_panel.h   |  3 ++
+ src/shell/panel/panel_manager.cpp     | 40 +++++++++++++++++++--------
+ 4 files changed, 45 insertions(+), 13 deletions(-)
+
+diff --git a/src/config/config_types.h b/src/config/config_types.h
+index e530eb79a..7b1505065 100644
+--- a/src/config/config_types.h
++++ b/src/config/config_types.h
+@@ -135,7 +135,9 @@ struct BarConfig {
+   // defaults and overridden in turn by `[widget.<name>.actions]`. See widget_action.h.
+   std::unordered_map<std::string, std::string> actions;
+   std::string name = "default";
+-  std::string position = "top";
++  // CaeliGlow: the signature layout is a bottom-docked bar with the launcher rising
++  // out of the screen's bottom edge, so the compiled default follows that.
++  std::string position = "bottom";
+   bool enabled = true;
+   bool autoHide = false;             // slide out when the pointer leaves; reveal on edge approach
+   std::int32_t autoHideDelayMs = 0;  // wait after pointer leaves before hiding; 0 hides immediately
+@@ -1089,7 +1091,10 @@ struct ShellConfig {
+     bool listItemBackground = false;       // filled rounded background behind launcher/clipboard list items
+     bool wallpaperShowNames = true;        // caption wallpaper picker thumbnails with their file name
+     std::string floatingLayer = "overlay"; // top | overlay; attached panels follow their bar
+-    PanelPlacement launcherPlacement = PanelPlacement::Floating;
++    // CaeliGlow: the launcher docks to the bar edge and spans the screen edge-to-edge
++    // with concave corners melting into the screen edges (set floating_placement-style
++    // "floating" in [shell.panel] launcher_placement to get the classic floating card).
++    PanelPlacement launcherPlacement = PanelPlacement::Attached;
+     PanelPlacement clipboardPlacement = PanelPlacement::Floating;
+     PanelPlacement controlCenterPlacement = PanelPlacement::Attached;
+     PanelPlacement wallpaperPlacement = PanelPlacement::Attached;
+diff --git a/src/shell/launcher/launcher_panel.cpp b/src/shell/launcher/launcher_panel.cpp
+index b2a423cd5..e07d5db8c 100644
+--- a/src/shell/launcher/launcher_panel.cpp
++++ b/src/shell/launcher/launcher_panel.cpp
+@@ -1421,6 +1421,12 @@ PanelPlacement LauncherPanel::panelPlacement() const noexcept {
+   return m_config != nullptr ? m_config->config().shell.panel.launcherPlacement : PanelPlacement::Floating;
+ }
+ 
++bool LauncherPanel::fillsWidth() const noexcept {
++  // CaeliGlow: edge-to-edge dock only in attached placement; the floating card
++  // keeps its configured width.
++  return panelPlacement() == PanelPlacement::Attached;
++}
++
+ void LauncherPanel::applyProviderConfig(LauncherProvider& provider) const {
+   std::string triggerWord = std::string(provider.defaultPrefix());
+   std::string prefix = "/";
+diff --git a/src/shell/launcher/launcher_panel.h b/src/shell/launcher/launcher_panel.h
+index 5f14aea27..0fa48a367 100644
+--- a/src/shell/launcher/launcher_panel.h
++++ b/src/shell/launcher/launcher_panel.h
+@@ -64,6 +64,9 @@ public:
+ 
+   [[nodiscard]] float preferredWidth() const override;
+   [[nodiscard]] float preferredHeight() const override;
++  // CaeliGlow: when docked (attached placement) the launcher spans the screen
++  // edge-to-edge; the classic floating card keeps its preferred width.
++  [[nodiscard]] bool fillsWidth() const noexcept override;
+   [[nodiscard]] LayerShellKeyboard keyboardMode() const override { return LayerShellKeyboard::Exclusive; }
+   [[nodiscard]] InputArea* initialFocusArea() const override;
+   [[nodiscard]] bool handleGlobalKey(std::uint32_t sym, std::uint32_t modifiers, bool pressed, bool preedit) override;
+diff --git a/src/shell/panel/panel_manager.cpp b/src/shell/panel/panel_manager.cpp
+index 4a6c83f7c..d10fb6178 100644
+--- a/src/shell/panel/panel_manager.cpp
++++ b/src/shell/panel/panel_manager.cpp
+@@ -658,18 +658,12 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
+   };
+ 
+   const PanelPlacement activePlacement = m_activePanel->panelPlacement();
+-  // Fill sizing is floating-only (see Panel::fillsWidth): every other placement sizes the
+-  // surface from the panel's preferred extent.
++  // CaeliGlow: fill sizing applies to both placements. Floating dual-anchors the
++  // surface and lets the compositor assign the work-area extent; attached spans
++  // the full output on the bar's cross axis (edge-to-edge docked launcher).
+   const bool floatingPlacement = activePlacement == PanelPlacement::Floating;
+-  const bool fillWidth = m_activePanel->fillsWidth() && floatingPlacement;
+-  const bool fillHeight = m_activePanel->fillsHeight() && floatingPlacement;
+-  if (!floatingPlacement && (m_activePanel->fillsWidth() || m_activePanel->fillsHeight())) {
+-    kLog.warn(
+-        "panel manager: \"{}\" uses fill sizing, which only applies to floating placement; opening at its preferred "
+-        "size",
+-        panelId
+-    );
+-  }
++  const bool fillWidth = m_activePanel->fillsWidth();
++  const bool fillHeight = m_activePanel->fillsHeight();
+   m_panelFillWidth = fillWidth;
+   m_panelFillHeight = fillHeight;
+   const bool pluginPanel = m_activePanelId.contains(':');
+@@ -990,6 +984,24 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
+       mainBleedAway = (barIsBottom ? shadowBleed.up : shadowBleed.down) + 2;
+     }
+ 
++    // CaeliGlow: edge-to-edge attached panels (the docked launcher). The body spans
++    // the full output on the bar's cross axis. The concave end flare would extend
++    // past the screen edge, so drop the cross-axis outset entirely and pin the body
++    // at 0: the compositor clips the off-screen half of the flare, which reads as
++    // the panel melting into the screen edge (Caelestia-style dock).
++    const bool attachedFillWidth = fillWidth && !barIsVertical;
++    const bool attachedFillHeight = fillHeight && barIsVertical;
++    if (attachedFillWidth || attachedFillHeight) {
++      crossOutsetStart = 0;
++      crossOutsetEnd = 0;
++    }
++    if (attachedFillWidth) {
++      panelWidth = static_cast<std::uint32_t>(std::max(1, outputWidth));
++    }
++    if (attachedFillHeight) {
++      panelHeight = static_cast<std::uint32_t>(std::max(1, outputHeight));
++    }
++
+     const auto crossPad = static_cast<std::uint32_t>(std::max(0, crossOutsetStart + crossOutsetEnd));
+     const auto mainPad = static_cast<std::uint32_t>(std::max(0, mainBleedAway));
+     const std::uint32_t surfaceWidth = barIsVertical ? (panelWidth + mainPad) : (panelWidth + crossPad);
+@@ -1041,6 +1053,12 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
+       visualX = useAnchorForAttached ? std::clamp(desiredX, minX, maxX) : centeredX;
+       visualY = barIsBottom ? barTop - static_cast<std::int32_t>(panelHeight) + panelOverlap : barBottom - panelOverlap;
+     }
++    if (attachedFillWidth) {
++      visualX = 0;
++    }
++    if (attachedFillHeight) {
++      visualY = 0;
++    }
+ 
+     // Surface origin: cross-axis outset on each side, main-axis bleed on the side opposite the bar.
+     std::int32_t surfaceX = 0;
+-- 
+2.56.0
+
