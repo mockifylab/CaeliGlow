@@ -56,4 +56,25 @@ package() {
   fi
 
   install -Dm644 "$srcdir/CaeliGlow/LICENSE" "$pkgdir/usr/share/licenses/caeliglow/LICENSE"
+
+  # Greeter session entry: picking "CaeliGlow" marks the Hyprland session so the
+  # Lua autostart launches caeliglow; every other entry keeps distro noctalia.
+  mkdir -p "$pkgdir/usr/local/bin" "$pkgdir/usr/local/share/wayland-sessions"
+  cat > "$pkgdir/usr/local/bin/caeliglow-session" <<'EOF'
+#!/bin/sh
+# CaeliGlow session launcher (invoked by the greeter's "CaeliGlow" entry).
+export CAELIGLOW_SESSION=1
+exec /usr/bin/start-hyprland
+EOF
+  chmod 755 "$pkgdir/usr/local/bin/caeliglow-session"
+  cat > "$pkgdir/usr/local/share/wayland-sessions/caeliglow.desktop" <<'EOF'
+[Desktop Entry]
+Name=CaeliGlow
+Comment=Hyprland session with the CaeliGlow shell
+Exec=/usr/local/bin/caeliglow-session
+Type=Application
+DesktopNames=Hyprland
+Keywords=tiling;wayland;compositor;caeliglow;noctalia;
+EOF
+  chmod 644 "$pkgdir/usr/local/share/wayland-sessions/caeliglow.desktop"
 }

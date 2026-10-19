@@ -70,8 +70,17 @@ curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/q
 ```
 
 It fetches the pinned Noctalia submodule, applies the whole CaeliGlow patch series,
-builds a release, and installs it as `/usr/local/bin/caeliglow` — under its **own name**,
-so it never shadows or overwrites your distro `noctalia`. Undo it any time with:
+builds a **release**, and installs it as `/usr/local/bin/caeliglow` — under its **own
+name**, so it never shadows or overwrites your distro `noctalia`. A **CaeliGlow session
+entry appears in your greeter**: pick it to boot the CaeliGlow shell, pick any other
+entry to stay on distro Noctalia (one Lua autostart branch handles both):
+
+```lua
+if os.getenv("CAELIGLOW_SESSION") == "1" then hl.exec_cmd("/usr/local/bin/caeliglow")
+else hl.exec_cmd("/usr/bin/noctalia") end
+```
+
+Undo it any time with:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/uninstall.sh | bash

@@ -50,8 +50,12 @@ curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/q
 `scripts/quick-install.sh` clones the repo (pinned submodule included), installs
 dependencies additively, applies the patch series, builds a release and installs it
 under `/usr/local` — the binary is renamed to **`caeliglow`** so it never shadows the
-distro `noctalia` on your `PATH`. Remove everything again with `scripts/uninstall.sh`
-(same URL pattern; add `--purge` to also delete `~/.config/caeliglow` and friends).
+distro `noctalia` on your `PATH`. It also registers a **CaeliGlow entry in the greeter**
+(`/usr/local/bin/caeliglow-session` + `share/wayland-sessions/caeliglow.desktop`, opt out
+with `CAELIGLOW_SESSION_ENTRY=0`); branch your Hyprland Lua autostart on `CAELIGLOW_SESSION`
+so the default session keeps launching `/usr/bin/noctalia`. Remove everything again with
+`scripts/uninstall.sh` (same URL pattern; add `--purge` to also delete `~/.config/caeliglow`
+and friends).
 
 ## Pacman-native package (AUR-ready)
 

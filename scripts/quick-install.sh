@@ -35,7 +35,9 @@ if [[ -d "$SRC/.git" ]]; then
   git -C "$SRC" reset --hard "origin/$BRANCH"
   git -C "$SRC" submodule update --init --recursive
 else
-  git clone --depth 1 --branch "$BRANCH" --recurse-submodules --shallow-submodules "$REPO" "$SRC"
+  # Full submodule clone (no --shallow-submodules): git am --3way needs the
+  # pinned tree's history to stay reliable on every machine.
+  git clone --depth 1 --branch "$BRANCH" --recurse-submodules "$REPO" "$SRC"
 fi
 
 echo ">> Installing build dependencies (additive only; no removals)."
@@ -74,13 +76,44 @@ if [[ -f "$DESK" ]]; then
   sudo mv -f "$DESK" "$PREFIX/share/applications/caeliglow.desktop"
 fi
 
+# Greeter session entry: pick "CaeliGlow" at login to start your usual Hyprland
+# session with the CaeliGlow shell; any other entry keeps distro noctalia.
+# Opt out with CAELIGLOW_SESSION_ENTRY=0.
+if [[ "${CAELIGLOW_SESSION_ENTRY:-1}" == "1" ]]; then
+  sudo mkdir -p "$PREFIX/share/wayland-sessions"
+  sudo tee "$PREFIX/bin/caeliglow-session" >/dev/null <<'EOF'
+#!/bin/sh
+# CaeliGlow session launcher (invoked by the greeter's "CaeliGlow" entry).
+# Starts the SAME Hyprland session, marked so the Hyprland Lua autostart
+# launches the CaeliGlow shell instead of the distro Noctalia.
+export CAELIGLOW_SESSION=1
+exec /usr/bin/start-hyprland
+EOF
+  sudo chmod 755 "$PREFIX/bin/caeliglow-session"
+  sudo tee "$PREFIX/share/wayland-sessions/caeliglow.desktop" >/dev/null <<'EOF'
+[Desktop Entry]
+Name=CaeliGlow
+Comment=Hyprland session with the CaeliGlow shell
+Exec=/usr/local/bin/caeliglow-session
+Type=Application
+DesktopNames=Hyprland
+Keywords=tiling;wayland;compositor;caeliglow;noctalia;
+EOF
+  sudo chmod 644 "$PREFIX/share/wayland-sessions/caeliglow.desktop"
+fi
+
 echo ">> Installed. Summary:"
 echo "   binary : $PREFIX/bin/caeliglow   (distro noctalia at /usr/bin/noctalia untouched)"
 echo "   config : ~/.config/caeliglow     (its own namespace; never reads ~/.config/noctalia)"
 echo "   state  : ~/.local/state/caeliglow"
 echo "   log    : ~/.cache/caeliglow/caeliglow.log"
 echo
-echo "To run it inside your existing Hyprland session, start it instead of (or alongside,"
-echo "with its own sockets) the distro shell, e.g.:"
-echo "   /usr/local/bin/caeliglow"
+if [[ "${CAELIGLOW_SESSION_ENTRY:-1}" == "1" ]]; then
+  echo "Greeter: a CaeliGlow session entry was installed. Pick it at login to run this"
+  echo "shell; any other entry keeps your distro noctalia. Your Hyprland Lua autostart"
+  echo "should branch like this (default must stay noctalia):"
+  echo '  if os.getenv("CAELIGLOW_SESSION") == "1" then hl.exec_cmd("/usr/local/bin/caeliglow")'
+  echo '  else hl.exec_cmd("/usr/bin/noctalia") end'
+fi
+echo
 echo "To remove everything again:   bash <(curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/uninstall.sh)"
