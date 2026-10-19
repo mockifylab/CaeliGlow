@@ -1,0 +1,59 @@
+# Maintainer: mockifylab <https://github.com/mockifylab/CaeliGlow>
+pkgname=caeliglow
+pkgver=1.4.0
+pkgrel=1
+pkgdesc='CaeliGlow desktop shell: Noctalia 5.3.0 plus the CaeliGlow patch series, with its own config namespace'
+arch=(x86_64)
+url='https://github.com/mockifylab/CaeliGlow'
+license=('MIT')
+depends=(
+  wayland libglvnd freetype2 fontconfig cairo pango harfbuzz
+  libxkbcommon glib2 libsecret libsodium
+  sdbus-cpp libpipewire wireplumber polkit
+  pam curl libwebp libjxl libsndfile librsvg
+  libqalculate libxml2 md4c tomlplusplus libical
+  nlohmann-json stb jemalloc
+)
+makedepends=(git meson ninja gcc just pkgconf python)
+source=("git+${url}.git#tag=v${pkgver}")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$srcdir/CaeliGlow"
+  git submodule update --init --recursive
+
+  # Apply the CaeliGlow series onto the pinned Noctalia checkout. The series is
+  # applied inline (not via scripts/apply-patches.sh) because in a fresh clone
+  # the submodule .git entry is a gitfile, not a directory.
+  cd upstream/noctalia
+  while IFS= read -r p; do
+    [[ "$p" =~ ^[[:space:]]*(#|$) ]] && continue
+    git am --3way "$srcdir/CaeliGlow/patches/$p"
+  done < "$srcdir/CaeliGlow/patches/series"
+}
+
+build() {
+  cd "$srcdir/CaeliGlow/upstream/noctalia"
+  # Prefix stays /usr/local so the package can never file-conflict with the
+  # distro `noctalia` package (which owns everything under /usr).
+  just configure release /usr/local
+  just build release
+}
+
+package() {
+  cd "$srcdir/CaeliGlow/upstream/noctalia"
+  DESTDIR="$pkgdir" meson install -C build-release --no-rebuild
+
+  # Ship the binary under the CaeliGlow name so it never shadows `noctalia`
+  # on PATH; assets keep their upstream-relative layout on purpose (the
+  # compiled-in resource path), which lives safely under /usr/local.
+  mv "$pkgdir/usr/local/bin/noctalia" "$pkgdir/usr/local/bin/caeliglow"
+  local desk="$pkgdir/usr/local/share/applications/dev.noctalia.Noctalia.desktop"
+  if [[ -f "$desk" ]]; then
+    sed -i -e 's|^Exec=.*|Exec=/usr/local/bin/caeliglow|' \
+           -e '/^TryExec=/d' -e 's|^Name=.*|Name=CaeliGlow|' "$desk"
+    mv "$desk" "$pkgdir/usr/local/share/applications/caeliglow.desktop"
+  fi
+
+  install -Dm644 "$srcdir/CaeliGlow/LICENSE" "$pkgdir/usr/share/licenses/caeliglow/LICENSE"
+}

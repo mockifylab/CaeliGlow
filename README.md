@@ -63,6 +63,29 @@ and setting exactly as upstream intended.
 > Requires **CachyOS / Arch** and **Hyprland (Wayland)**. All installs are additive
 > (`pacman -S --needed`) — no removals, no boot/EFI/partition changes.
 
+**One command** — the `pacman -S`-style experience, straight from this repo:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/quick-install.sh | bash
+```
+
+It fetches the pinned Noctalia submodule, applies the whole CaeliGlow patch series,
+builds a release, and installs it as `/usr/local/bin/caeliglow` — under its **own name**,
+so it never shadows or overwrites your distro `noctalia`. Undo it any time with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/uninstall.sh | bash
+```
+
+**Pacman-native path** — install and remove like any Arch package (`sudo pacman -R caeliglow`):
+
+```sh
+cd pkgbuild && makepkg -si      # from a clone of this repo
+paru -S caeliglow               # once caeliglow is published to the AUR (pkgbuild/ is AUR-ready)
+```
+
+**Manual step-by-step** (what the one-liner does under the hood):
+
 ```sh
 # 1) Clone with the pinned Noctalia submodule
 git clone --recursive https://github.com/mockifylab/CaeliGlow.git
@@ -78,9 +101,10 @@ sudo ./scripts/install-deps.sh
 sudo ./scripts/install.sh release /usr/local
 ```
 
-Point your Hyprland autostart at `/usr/local/bin/noctalia`. Because the packaged
-`/usr/bin/noctalia` is untouched, you can always fall back. Restore ordinary Noctalia
-with `./scripts/rollback.sh release /usr/local`.
+Point your Hyprland autostart at `/usr/local/bin/caeliglow` (or `/usr/local/bin/noctalia`
+after a manual `scripts/install.sh`, which keeps the upstream binary name). Because the
+packaged `/usr/bin/noctalia` is untouched, you can always fall back. Restore ordinary
+Noctalia with `./scripts/uninstall.sh` (quick-install) or `./scripts/rollback.sh release /usr/local`.
 
 Full walkthrough: **[docs/BUILDING.md](docs/BUILDING.md)**.
 

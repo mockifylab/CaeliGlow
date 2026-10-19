@@ -4,6 +4,14 @@ All notable changes to CaeliGlow are documented here. The format follows
 Keep-a-Changelog; CaeliGlow uses Semantic Versioning. CaeliGlow's version is read
 from the single canonical `VERSION` file.
 
+## [Unreleased]
+
+- One-command install: `scripts/quick-install.sh` (clone → patch series → release build →
+  `/usr/local/bin/caeliglow`), with `scripts/uninstall.sh` as its symmetric remover.
+- `pkgbuild/PKGBUILD`: AUR-ready Arch package `caeliglow` (installs/removes via pacman,
+  zero file overlap with the distro `noctalia` package).
+- README / docs/BUILDING.md document both install paths.
+
 ## [1.4.0] - 2026-10-19
 
 CaeliGlow gets its own home: configuration, state and runtime live in a dedicated

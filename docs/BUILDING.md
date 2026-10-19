@@ -39,12 +39,40 @@ directly first:
 ./upstream/noctalia/build-release/noctalia --version
 ```
 
+## One-command install
+
+For day-to-day use there is a scripted installer — one line, no clone needed:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/quick-install.sh | bash
+```
+
+`scripts/quick-install.sh` clones the repo (pinned submodule included), installs
+dependencies additively, applies the patch series, builds a release and installs it
+under `/usr/local` — the binary is renamed to **`caeliglow`** so it never shadows the
+distro `noctalia` on your `PATH`. Remove everything again with `scripts/uninstall.sh`
+(same URL pattern; add `--purge` to also delete `~/.config/caeliglow` and friends).
+
+## Pacman-native package (AUR-ready)
+
+`pkgbuild/PKGBUILD` builds the exact same recipe as an Arch package named `caeliglow`:
+
+```sh
+cd pkgbuild && makepkg -si          # build + install through pacman
+sudo pacman -R caeliglow            # clean removal, files tracked by pacman
+```
+
+The package deliberately installs under `/usr/local` (binary `caeliglow`, own desktop
+entry) so it can never file-conflict with the packaged `noctalia` under `/usr`.
+Once the directory is submitted to the AUR, `paru -S caeliglow` becomes the literal
+one-command install.
+
 ## Debug / iterate
 
 ```sh
 ./scripts/apply-patches.sh
 cd upstream/noctalia
-just configure debug && just build debug && just test debug
+just configure debug /usr/local && just build debug && just test debug
 cd ../..
 ./scripts/reset-patches.sh         # back to a clean pinned tree
 ```
