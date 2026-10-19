@@ -26,6 +26,8 @@ prepare() {
   # applied inline (not via scripts/apply-patches.sh) because in a fresh clone
   # the submodule .git entry is a gitfile, not a directory.
   cd upstream/noctalia
+  git config user.name  "${GIT_AUTHOR_NAME:-caeliglow-builder}"
+  git config user.email "${GIT_AUTHOR_EMAIL:-caeliglow-builder@localhost}"
   while IFS= read -r p; do
     [[ "$p" =~ ^[[:space:]]*(#|$) ]] && continue
     git am --3way "$srcdir/CaeliGlow/patches/$p"

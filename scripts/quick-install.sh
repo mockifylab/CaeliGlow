@@ -45,11 +45,16 @@ echo ">> Installing build dependencies (additive only; no removals)."
 
 echo ">> Applying the CaeliGlow patch series to the pinned Noctalia tree"
 cd "$SRC/upstream/noctalia"
+# git am creates commits; a fresh machine may have no global git identity.
+# Set repo-local values only (never touches the user's global config).
+git config user.name  "${GIT_AUTHOR_NAME:-CaeliGlow Installer}"
+git config user.email "${GIT_AUTHOR_EMAIL:-caeliglow-installer@localhost}"
 # In a fresh clone the submodule .git is a gitfile, so we apply the series inline
 # instead of scripts/apply-patches.sh (which expects a full development clone).
 if git log -5 --format='%s' 2>/dev/null | grep -qE '^caeliglow:'; then
   echo "   (series already applied — skipping)"
 else
+  git am --abort 2>/dev/null || true   # self-heal an interrupted previous run
   while IFS= read -r p; do
     [[ "$p" =~ ^[[:space:]]*(#|$) ]] && continue
     echo "   + $p"
