@@ -117,6 +117,16 @@ EOF
   sudo chmod 644 "$PREFIX/share/wayland-sessions/caeliglow.desktop"
 fi
 
+# In-place update: if this user's session is already running the CaeliGlow shell,
+# restart it so the LIVE session becomes the new version immediately (applications
+# are untouched — only the shell surfaces blink for a second).
+if pgrep -u "$(id -u)" -f '^/usr/local/bin/caeliglow' >/dev/null 2>&1; then
+  echo ">> Restarting the running CaeliGlow shell into the new version"
+  pkill -u "$(id -u)" -f '^/usr/local/bin/caeliglow' || true
+  sleep 1
+  setsid /usr/local/bin/caeliglow >/dev/null 2>&1 < /dev/null &
+fi
+
 echo ">> Installed. Summary:"
 echo "   binary : $PREFIX/bin/caeliglow   (renamed build; never shadows /usr/bin/noctalia)"
 echo "   config : ~/.config/caeliglow     (its own namespace; never reads ~/.config/noctalia)"

@@ -6,6 +6,10 @@ from the single canonical `VERSION` file.
 
 ## [Unreleased]
 
+- `scripts/quick-install.sh` now restarts the running CaeliGlow shell in place after
+  installing, so "Install now" from Settings › About updates the *live* session to the
+  new version — no logout needed.
+
 ## [1.5.1] - 2026-10-19
 
 The update card in Settings → About now tells you *what* you are getting and gives
