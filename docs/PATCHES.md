@@ -329,6 +329,19 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
   message with the manual command hint.
 - **Status:** **compiled + regression-tested** (153/153).
 
+## 0016 — About update card: what's-new text + prominent one-shot Install
+- **Files:** `src/shell/settings/settings_content_about.{h,cpp}`, `settings_window.h`,
+  `settings_window_scene.cpp`
+- **What:** when a newer release is found, the update card now leads with the result
+  (bold), the release's **what's-new text** (the GitHub release body rendered strictly
+  as plain text: cosmetic markdown markers stripped, blank runs collapsed, capped at
+  1400 chars / 14 lines) and a prominent **Install vX now** Primary button beneath it.
+  The button is one-shot — it disappears once the installer terminal is launched, so a
+  double-click can't stack installs. The in-shell feature summary mentions in-place
+  updates.
+- **Status:** **compiled + regression-tested** (153/153); series 0001→0016 verified
+  byte-identical on a pristine v5.3.0.
+
 ---
 
 ## Notes on safety of the model

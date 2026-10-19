@@ -6,6 +6,28 @@ from the single canonical `VERSION` file.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-19
+
+The update card in Settings → About now tells you *what* you are getting and gives
+you the button to get it.
+
+### Changed
+- **About update card (patch 0016).** When a newer release is found, the card shows
+  the “what’s new” text from the release notes (rendered strictly as plain text —
+  never parsed or executed) with a prominent **“Install vX now”** button beneath it.
+  The button is one-shot: it disappears once the installer terminal is launched.
+- **Submodule pointer back to the pristine pin `a33122c42` (v5.3.0).** Releases must
+  record the *pinned upstream* commit — fresh clones get Noctalia from upstream and
+  apply `patches/series` (0001→0016) themselves, exactly as docs/PATCHES.md promises.
+  Development continues on the local `caeliglow-dev` branch.
+- `scripts/quick-install.sh` now documents **CaeliGlow-only** Hyprland Lua autostart
+  (the dual-session branch is optional, not the default advice).
+
+### Verified in this release
+- Full debug rebuild + link clean; `meson test` **153/153 pass, 0 fail**.
+- Series `0001→0016` applies cleanly onto a pristine v5.3.0 via `git am --3way` and
+  the resulting tree is byte-identical to the development branch.
+
 ## [1.5.0] - 2026-10-19
 
 CaeliGlow docks to the screen. The launcher and side panels now join the screen

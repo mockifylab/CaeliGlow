@@ -73,10 +73,11 @@ Why this wins:
   elasticity) instead of linear slides. All of it lives in a new theme-aware
   **Settings › CaeliGlow** section and in `[caeliglow]` config. Edge-hover flicker is
   fixed (open panels stay open; triggers have a re-trigger cooldown).
-- **Fully branded, self-updating (1.5.0)** — the launcher's settings button is the
+- **Fully branded, self-updating (1.5.0/1.5.1)** — the launcher's settings button is the
   animated CaeliGlow logo and every user-facing string reads CaeliGlow; Settings › About
-  now **installs new releases in place** — one click runs the quick-install over the
-  running version, keeping settings and state.
+  now **installs new releases in place** — the update card shows the release's what's-new
+  text and a one-shot "Install now" button that runs the quick-install over the running
+  version, keeping settings and state.
 
 The signature interactions ship **enabled by compiled-in defaults**, so a stock CaeliGlow
 build shows them with no config; everything stays additive and overridable.
@@ -96,13 +97,13 @@ build shows them with no config; everything stays additive and overridable.
 ## Quality bar (current evidence)
 
 - Baseline Noctalia v5.3.0 builds and links a working binary.
-- Patches 0001–0015 rebuild + relink cleanly.
+- Patches 0001–0016 rebuild + relink cleanly.
 - `meson test` suite: **153/153 pass, 0 fail** (config schema/validate/override cover the
   new fields).
 - Standalone version/update logic tests: **all pass** (and wired into CI).
 - Nested Hyprland smoke test: shell starts and runs stable with hover-to-open, edges, the
   power pill and the About page active — host session untouched.
-- Full `0001→0015` series applies onto a pristine v5.3.0 via `git am --3way`.
+- Full `0001→0016` series applies onto a pristine v5.3.0 via `git am --3way`.
 - Example config validates against the patched binary.
 
 ## Positioning & identity

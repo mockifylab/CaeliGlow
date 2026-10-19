@@ -92,9 +92,8 @@ if [[ -f "$DESK" ]]; then
   sudo mv -f "$DESK" "$PREFIX/share/applications/caeliglow.desktop"
 fi
 
-# Greeter session entry: pick "CaeliGlow" at login to start your usual Hyprland
-# session with the CaeliGlow shell; any other entry keeps distro noctalia.
-# Opt out with CAELIGLOW_SESSION_ENTRY=0.
+# Greeter session entry: pick "CaeliGlow" at login to start your Hyprland session
+# with the CaeliGlow shell. Opt out with CAELIGLOW_SESSION_ENTRY=0.
 if [[ "${CAELIGLOW_SESSION_ENTRY:-1}" == "1" ]]; then
   sudo mkdir -p "$PREFIX/share/wayland-sessions"
   sudo tee "$PREFIX/bin/caeliglow-session" >/dev/null <<'EOF'
@@ -119,17 +118,17 @@ EOF
 fi
 
 echo ">> Installed. Summary:"
-echo "   binary : $PREFIX/bin/caeliglow   (distro noctalia at /usr/bin/noctalia untouched)"
+echo "   binary : $PREFIX/bin/caeliglow   (renamed build; never shadows /usr/bin/noctalia)"
 echo "   config : ~/.config/caeliglow     (its own namespace; never reads ~/.config/noctalia)"
 echo "   state  : ~/.local/state/caeliglow"
 echo "   log    : ~/.cache/caeliglow/caeliglow.log"
 echo
 if [[ "${CAELIGLOW_SESSION_ENTRY:-1}" == "1" ]]; then
-  echo "Greeter: a CaeliGlow session entry was installed. Pick it at login to run this"
-  echo "shell; any other entry keeps your distro noctalia. Your Hyprland Lua autostart"
-  echo "should branch like this (default must stay noctalia):"
-  echo '  if os.getenv("CAELIGLOW_SESSION") == "1" then hl.exec_cmd("/usr/local/bin/caeliglow")'
-  echo '  else hl.exec_cmd("/usr/bin/noctalia") end'
+  echo "Greeter: a CaeliGlow session entry was installed. Pick it at login to run this shell."
+  echo "CaeliGlow-only autostart — in your Hyprland Lua config, start the shell unconditionally:"
+  echo '  hl.on("hyprland.start", function() hl.exec_cmd("/usr/local/bin/caeliglow") end)'
+  echo "(Prefer a dual session? Branch on CAELIGLOW_SESSION==\"1\" to pick caeliglow and"
+  echo " keep /usr/bin/noctalia for the other entries.)"
 fi
 echo
 echo "To remove everything again:   bash <(curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/uninstall.sh)"

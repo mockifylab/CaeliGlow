@@ -1,0 +1,224 @@
+From dc63d29defcc7f8f736f915df3b0449183a19701 Mon Sep 17 00:00:00 2001
+From: caeliglow-validate <caeliglow@local>
+Date: Mon, 19 Oct 2026 18:43:54 +0500
+Subject: [PATCH] caeliglow: About update card shows release notes and a
+ prominent one-shot Install
+
+---
+ src/shell/settings/settings_content_about.cpp | 115 +++++++++++++++---
+ src/shell/settings/settings_content_about.h   |   3 +-
+ src/shell/settings/settings_window.h          |   3 +-
+ src/shell/settings/settings_window_scene.cpp  |   1 +
+ 4 files changed, 101 insertions(+), 21 deletions(-)
+
+diff --git a/src/shell/settings/settings_content_about.cpp b/src/shell/settings/settings_content_about.cpp
+index ae52ea59e..0118384f2 100644
+--- a/src/shell/settings/settings_content_about.cpp
++++ b/src/shell/settings/settings_content_about.cpp
+@@ -51,6 +51,62 @@ namespace settings {
+     label(std::string_view text, float size, ColorRole role, FontWeight weight = FontWeight::Normal) {
+       return makeLabel(text, size, colorSpecFromRole(role), weight);
+     }
++
++    // Release notes arrive as GitHub markdown. They are displayed strictly as plain
++    // text: strip the cosmetic markers (heading hashes, bold/inline-code), collapse
++    // blank runs, and cap the length so the About card stays scannable. Nothing is
++    // ever parsed as markup or executed.
++    std::string sanitizeReleaseNotes(std::string_view raw) {
++      std::string text;
++      text.reserve(raw.size());
++      bool prevSpace = true;
++      for (std::size_t i = 0; i < raw.size();) {
++        const char c = raw[i];
++        if (c == '#') {  // heading markers at line start
++          while (i < raw.size() && raw[i] == '#') {
++            ++i;
++          }
++          if (i < raw.size() && raw[i] == ' ') {
++            ++i;
++          }
++          continue;
++        }
++        if (c == '\n') {
++          if (!text.empty() && text.back() == '\n') {
++            ++i;
++            continue;  // collapse consecutive blank lines
++          }
++          text.push_back('\n');
++          prevSpace = true;
++          ++i;
++          continue;
++        }
++        if (c == '*' || c == '`') {  // bold/italic/inline-code markers
++          ++i;
++          continue;
++        }
++        if ((c == ' ' || c == '\t') && prevSpace) {
++          ++i;
++          continue;  // collapse leading whitespace runs
++        }
++        text.push_back(c);
++        prevSpace = false;
++        ++i;
++      }
++      while (!text.empty() && (text.back() == '\n' || text.back() == ' ')) {
++        text.pop_back();
++      }
++      constexpr std::size_t kMaxNotesChars = 1400;
++      if (text.size() > kMaxNotesChars) {
++        std::size_t cut = text.rfind('\n', kMaxNotesChars);
++        if (cut == std::string::npos || cut < kMaxNotesChars / 2) {
++          cut = kMaxNotesChars;
++        }
++        text.resize(cut);
++        text += "\n\n(Full notes are on the GitHub release page.)";
++      }
++      return text;
++    }
+   } // namespace
+ 
+   void addSettingsCaeliGlowAbout(Flex& content, SettingsAboutContext ctx) {
+@@ -149,6 +205,42 @@ namespace settings {
+           "Update checks are disabled while offline mode is on.", Style::fontSizeCaption * scale,
+           ColorRole::OnSurfaceVariant
+       ));
++    } else if (ctx.updateAvailable) {
++      // CaeliGlow: a newer release exists — say so, show what's new, and put the
++      // one-click in-place install right here (same quick-install that first
++      // installed CaeliGlow; settings and state are kept).
++      updateCard->addChild(label(
++          ctx.updateStatusText.empty() ? "A new CaeliGlow release is available."
++                                       : std::string_view(ctx.updateStatusText),
++          Style::fontSizeBody * scale, ColorRole::Secondary, FontWeight::Bold
++      ));
++      const std::string notes = sanitizeReleaseNotes(ctx.updateNotes);
++      if (!notes.empty()) {
++        updateCard->addChild(label(
++            "What's new in " + (ctx.updateVersion.empty() ? std::string("this release") : ctx.updateVersion),
++            Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant, FontWeight::Bold
++        ));
++        updateCard->addChild(ui::label({
++            .text = notes,
++            .fontSize = Style::fontSizeCaption * scale,
++            .color = colorSpecFromRole(ColorRole::OnSurface),
++            .maxWidth = 420.0F * scale,
++            .maxLines = 14,
++        }));
++      }
++      if (!ctx.updateInFlight && ctx.onInstallUpdate) {
++        updateCard->addChild(ui::button({
++            .text = "Install " + (ctx.updateVersion.empty() ? std::string("latest") : ctx.updateVersion) + " now",
++            .variant = ButtonVariant::Primary,
++            .radius = Style::scaledRadiusMd(scale),
++            .onClick = ctx.onInstallUpdate,
++        }));
++        updateCard->addChild(label(
++            "Updates the system in place: CaeliGlow is rebuilt, replaces the running version and "
++            "restarts with your settings and state kept. Watch the terminal for progress.",
++            Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
++        ));
++      }
+     } else if (!ctx.updateStatusText.empty()) {
+       updateCard->addChild(label(
+           ctx.updateStatusText, Style::fontSizeBody * scale,
+@@ -162,25 +254,6 @@ namespace settings {
+       ));
+     }
+ 
+-    // CaeliGlow: updating installs the new release over this one, in place, via the
+-    // same quick-install command first used to get CaeliGlow. One explicit click.
+-    if (ctx.updateAvailable && !ctx.offlineMode && !ctx.updateInFlight && ctx.onInstallUpdate) {
+-      updateCard->addChild(
+-          ui::button({
+-              .text =
+-                  "Install v" + (ctx.updateVersion.empty() ? std::string("latest") : ctx.updateVersion) + " now",
+-              .variant = ButtonVariant::Primary,
+-              .radius = Style::scaledRadiusMd(scale),
+-              .onClick = ctx.onInstallUpdate,
+-          })
+-      );
+-      updateCard->addChild(label(
+-          "Runs the CaeliGlow quick-install in a terminal: it rebuilds and replaces the running "
+-          "version in place, keeping your settings and state.",
+-          Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
+-      ));
+-    }
+-
+     // ── What CaeliGlow adds (patch summary) ──────────────────────────────────
+     Flex* featureCard = addSettingsCard(*page, "What CaeliGlow adds", scale);
+     const std::vector<std::string> features = {
+@@ -188,6 +261,7 @@ namespace settings {
+         "The bottom edge reveals the launcher; the right edge opens the CaeliGlow power pill.",
+         "An animated launcher avatar and a consistent CaeliGlow accent across the shell.",
+         "This native Settings About page with private, one-request update checks.",
++        "Updates install in place from this page \u2014 \u201cInstall now\u201d shows what's new, then rebuilds and replaces CaeliGlow, keeping your settings.",
+     };
+     for (const std::string& feature : features) {
+       featureCard->addChild(label("\u2022  " + feature, Style::fontSizeBody * scale, ColorRole::OnSurface));
+@@ -251,6 +325,7 @@ void SettingsWindow::checkForUpdates() {
+   m_aboutUpdateError = false;
+   m_aboutUpdateAvailable = false;
+   m_aboutUpdateVersion.clear();
++  m_aboutUpdateNotes.clear();
+   requestContentRebuild();
+ 
+   HttpRequest req;
+@@ -268,6 +343,7 @@ void SettingsWindow::checkForUpdates() {
+         result.state == caeliglow::UpdateState::RateLimited;
+     m_aboutUpdateAvailable = result.state == caeliglow::UpdateState::UpdateAvailable;
+     m_aboutUpdateVersion = result.latestVersion;
++    m_aboutUpdateNotes = m_aboutUpdateAvailable ? result.notes : std::string{};
+     requestContentRebuild();
+   });
+ }
+@@ -287,6 +363,7 @@ void SettingsWindow::installUpdate() {
+         "Installer terminal launched for v" + (m_aboutUpdateVersion.empty() ? std::string("latest") : m_aboutUpdateVersion)
+         + ". CaeliGlow is replaced in place; your settings and state are kept.";
+     m_aboutUpdateError = false;
++    m_aboutUpdateAvailable = false; // one-shot: the button is gone once the installer runs
+   } else {
+     m_aboutStatusText = "Could not open a terminal to run the installer. Run the quick-install command manually.";
+     m_aboutUpdateError = true;
+diff --git a/src/shell/settings/settings_content_about.h b/src/shell/settings/settings_content_about.h
+index d63b7ea14..1963c90ac 100644
+--- a/src/shell/settings/settings_content_about.h
++++ b/src/shell/settings/settings_content_about.h
+@@ -24,7 +24,8 @@ namespace settings {
+     // CaeliGlow: when the last check found a newer release, About offers an
+     // in-place install (runs the quick-install script in a terminal window).
+     bool updateAvailable = false;
+-    std::string updateVersion;        // newest release tag when updateAvailable
++    std::string updateVersion;   // newest release tag when updateAvailable
++    std::string updateNotes;     // release-notes body (plain text) when updateAvailable
+     Flex* pageTitleRow = nullptr;
+     std::function<void()> onCheckForUpdates;
+     std::function<void()> onInstallUpdate;
+diff --git a/src/shell/settings/settings_window.h b/src/shell/settings/settings_window.h
+index ce04f340e..976424b00 100644
+--- a/src/shell/settings/settings_window.h
++++ b/src/shell/settings/settings_window.h
+@@ -292,7 +292,8 @@ private:
+   std::string m_aboutStatusText;      // CaeliGlow: last update-check result shown in About
+   bool m_aboutUpdateInFlight = false;
+   bool m_aboutUpdateError = false;
+-  std::string m_aboutUpdateVersion; // CaeliGlow: newest release tag when an update was found
++  std::string m_aboutUpdateVersion;  // CaeliGlow: newest release tag when an update was found
++  std::string m_aboutUpdateNotes;    // CaeliGlow: release-notes body shown in About
+   bool m_aboutUpdateAvailable = false;
+   // CaeliGlow: animated crescent-moon mark in the About header. Decoded GIF frames live as
+   // GPU textures across content rebuilds; the Image pointer is re-attached on each rebuild.
+diff --git a/src/shell/settings/settings_window_scene.cpp b/src/shell/settings/settings_window_scene.cpp
+index fd906b6e9..5b4655ace 100644
+--- a/src/shell/settings/settings_window_scene.cpp
++++ b/src/shell/settings/settings_window_scene.cpp
+@@ -1223,6 +1223,7 @@ void SettingsWindow::rebuildSettingsContent() {
+             .updateIsError = m_aboutUpdateError,
+             .updateAvailable = m_aboutUpdateAvailable,
+             .updateVersion = m_aboutUpdateVersion,
++            .updateNotes = m_aboutUpdateNotes,
+             .pageTitleRow = m_pageTitleRow,
+             .onCheckForUpdates = [this]() { checkForUpdates(); },
+             .onInstallUpdate = [this]() { installUpdate(); },
+-- 
+2.56.0
+

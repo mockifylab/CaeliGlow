@@ -9,7 +9,7 @@
 
 **A polished, Noctalia-based desktop shell for CachyOS + Hyprland.**
 
-[![Version](https://img.shields.io/badge/version-1.5.0-8B7CF6?style=flat-square)](https://github.com/mockifylab/CaeliGlow/releases)
+[![Version](https://img.shields.io/badge/version-1.5.1-8B7CF6?style=flat-square)](https://github.com/mockifylab/CaeliGlow/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-4FE0C4?style=flat-square)](LICENSE)
 [![Built on Noctalia v5.3.0](https://img.shields.io/badge/built%20on-Noctalia%20v5.3.0-F5C86B?style=flat-square)](https://github.com/noctalia-dev/noctalia)
 [![Platform](https://img.shields.io/badge/CachyOS%20%C2%B7%20Hyprland%20%C2%B7%20Wayland-12172B?style=flat-square)](#supported-environment)
@@ -165,13 +165,13 @@ Per-patch rationale and safety notes: **[docs/PATCHES.md](docs/PATCHES.md)**.
 Honesty about what "done" means here:
 
 - **Reproducible build:** unmodified Noctalia v5.3.0 configures, builds and links a
-  working `noctalia`; CaeliGlow patches 0001–0015 rebuild and relink with no errors.
+  working `noctalia`; CaeliGlow patches 0001–0016 rebuild and relink with no errors.
 - **Regression suite:** full `meson test` → **153/153 OK, 0 fail** (includes config
   schema round-trip, CLI validate, override mutation — which exercise the new
   `hot_corners` fields).
 - **Logic unit tests:** version-comparison + update state machine compile and pass
   standalone (and in CI).
-- **Series integrity:** `0001→…→0015` apply cleanly onto a pristine v5.3.0 via
+- **Series integrity:** `0001→…→0016` apply cleanly onto a pristine v5.3.0 via
   `git am --3way`, reconstructing the tree byte-for-byte.
 - **Nested smoke test:** the patched shell starts and runs stable inside a nested Hyprland
   window with hover-to-open, edges, the power pill and the About page active — the host
@@ -227,7 +227,7 @@ Full text: **[docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)** · **[LICENSE](LICENSE
 
 <div align="center">
 
-**Version 1.5.0** · Developer **Aasif** · [github.com/mockifylab/CaeliGlow](https://github.com/mockifylab/CaeliGlow)
+**Version 1.5.1** · Developer **Aasif** · [github.com/mockifylab/CaeliGlow](https://github.com/mockifylab/CaeliGlow)
 
 *Made with care for the CachyOS + Hyprland community.*
 

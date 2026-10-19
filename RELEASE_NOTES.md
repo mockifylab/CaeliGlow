@@ -1,4 +1,4 @@
-# CaeliGlow 1.5.0
+# CaeliGlow 1.5.1
 
 **CaeliGlow** — a polished, **Noctalia-based** desktop shell for **CachyOS + Hyprland**.
 A small, documented **patch series over a pinned Noctalia `v5.3.0`**, rebuilt from source.
@@ -8,7 +8,18 @@ distinct, **visible-by-default** interactions.
 > **Not a rewrite, not a plugin.** Additive by default, reversible in one command, and it
 > never overwrites your distro `noctalia` package or touches boot/EFI/partitions.
 
-## What's new in 1.5.0
+## What's new in 1.5.1
+
+- **The About update card does what it says.** When a newer release is found it now
+  shows the **what's-new text** from the release notes and a prominent
+  **"Install vX now"** button right under it — one click updates the system in place
+  (patch 0016). The button is one-shot: it vanishes once the installer launches.
+- Coming from 1.4.x? That build predates the install button, so the **one-time** jump
+  is the same single command:
+  `curl -fsSL https://raw.githubusercontent.com/mockifylab/CaeliGlow/main/scripts/quick-install.sh | bash`
+  After that, every future update is the button.
+
+## What's new in 1.5.0 (still in this release)
 
 - **The launcher is docked to the bottom edge.** No more floating panel: it sits flush
   against the bottom of the screen with **concave screen-edge corners** — the curves bend
@@ -128,13 +139,13 @@ See [docs/BUILDING.md](docs/BUILDING.md) and [docs/UPDATING.md](docs/UPDATING.md
 
 ## Verification
 
-- Patches 0001–0015 rebuild + relink cleanly against the pinned tree.
+- Patches 0001–0016 rebuild + relink cleanly against the pinned tree.
 - Noctalia `meson test` suite: **153/153 pass, 0 fail** (with the `[caeliglow]` schema
   round-trip probe added).
 - Version/update logic unit tests pass (locally and in CI).
 - Nested Hyprland smoke test: the shell starts and runs stable with hover-to-open,
   edge actions, the power pill and the About page active; the host session is untouched.
-- Full `0001→0015` series applies onto a pristine v5.3.0 via `git am --3way`,
+- Full `0001→0016` series applies onto a pristine v5.3.0 via `git am --3way`,
   reconstructing the tree byte-for-byte.
 - Example config validates against the patched binary.
 - **On-device smoke test** (live Hyprland, multi-monitor/fractional scaling) is still to
