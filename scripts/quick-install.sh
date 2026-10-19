@@ -65,7 +65,18 @@ fi
 VER="$(tr -d '[:space:]' < "$SRC/VERSION")"
 echo ">> Building CaeliGlow v$VER (release, prefix $PREFIX)"
 just configure release "$PREFIX"
-just build release
+# CachyOS ships a g++-16 build with intermittent internal compiler errors (segfault
+# in cc1plus) on -O3/LTO translation units. ninja resumes incrementally, so retry.
+BUILD_OK=0
+for attempt in 1 2 3 4 5; do
+  if just build release; then BUILD_OK=1; break; fi
+  echo ">> Build attempt $attempt failed (known g++ ICE flake); resuming attempt $((attempt + 1))..."
+  sleep 2
+done
+if [[ "$BUILD_OK" -ne 1 ]]; then
+  echo "error: build failed after 5 attempts — this is not the usual ICE flake." >&2
+  exit 1
+fi
 
 echo ">> Installing into $PREFIX (the only step that needs root)."
 sudo meson install -C "$PWD/build-release" --no-rebuild

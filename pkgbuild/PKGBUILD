@@ -39,7 +39,14 @@ build() {
   # Prefix stays /usr/local so the package can never file-conflict with the
   # distro `noctalia` package (which owns everything under /usr).
   just configure release /usr/local
-  just build release
+  # Retry for the known CachyOS g++-16 intermittent ICE; ninja resumes.
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    just build release && return 0
+    echo ">> build attempt $attempt failed (g++ ICE flake?), retrying..."
+    sleep 2
+  done
+  return 1
 }
 
 package() {
