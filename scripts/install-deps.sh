@@ -18,4 +18,12 @@ DEPS=(
 echo ">> Installing (only-if-needed) build dependencies; no removals performed."
 sudo pacman -S --needed --noconfirm "${DEPS[@]}"
 
-echo ">> Dependency install complete."
+# Mark every dependency EXPLICIT. `pacman -S --needed` skips already-installed
+# packages without changing their install reason, so a dep that arrived as someone
+# else's dependency stays implicit — and `pacman -Rns <that-other-pkg>` then orphan-
+# removes it out from under CaeliGlow (this is exactly how a live host lost
+# libqalculate.so.23 and the shell stopped launching). Explicit deps are never
+# auto-removed.
+sudo pacman -D --asexplicit "${DEPS[@]}"
+
+echo ">> Dependency install complete (all marked explicit)."

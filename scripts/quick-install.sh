@@ -78,6 +78,11 @@ if [[ "$BUILD_OK" -ne 1 ]]; then
   exit 1
 fi
 
+# Release gate: resolve every shared library of the fresh binary BEFORE install.
+# A "not found" here (e.g. an orphan-removed libqalculate) would otherwise only
+# surface as a silent autostart failure on the next login.
+"$SRC/scripts/check-runtime-deps.sh" "$PWD/build-release/noctalia"
+
 echo ">> Installing into $PREFIX (the only step that needs root)."
 sudo meson install -C "$PWD/build-release" --no-rebuild
 
@@ -85,6 +90,9 @@ sudo meson install -C "$PWD/build-release" --no-rebuild
 if [[ -f "$PREFIX/bin/noctalia" ]]; then
   sudo mv -f "$PREFIX/bin/noctalia" "$PREFIX/bin/caeliglow"
 fi
+
+# Re-check the INSTALLED binary (same loader path the session will hit).
+"$SRC/scripts/check-runtime-deps.sh" "$PREFIX/bin/caeliglow"
 DESK="$PREFIX/share/applications/dev.noctalia.Noctalia.desktop"
 if [[ -f "$DESK" ]]; then
   sudo sed -i -e 's|^Exec=.*|Exec='"$PREFIX"'/bin/caeliglow|' \
@@ -124,7 +132,17 @@ if pgrep -u "$(id -u)" -f '^/usr/local/bin/caeliglow' >/dev/null 2>&1; then
   echo ">> Restarting the running CaeliGlow shell into the new version"
   pkill -u "$(id -u)" -f '^/usr/local/bin/caeliglow' || true
   sleep 1
-  setsid /usr/local/bin/caeliglow >/dev/null 2>&1 < /dev/null &
+  # Log loader/startup failures instead of dropping them (/dev/null made a
+  # failed restart invisible; the shell's own logger appends to the same file).
+  mkdir -p "$HOME/.cache/caeliglow"
+  setsid /usr/local/bin/caeliglow >>"$HOME/.cache/caeliglow/caeliglow.log" 2>&1 < /dev/null &
+  sleep 2
+  if pgrep -u "$(id -u)" -f '^/usr/local/bin/caeliglow' >/dev/null 2>&1; then
+    echo "   shell is running the new version."
+  else
+    echo "   warning: the shell did NOT come back — last lines of ~/.cache/caeliglow/caeliglow.log:" >&2
+    tail -n 15 "$HOME/.cache/caeliglow/caeliglow.log" >&2 || true
+  fi
 fi
 
 echo ">> Installed. Summary:"
@@ -135,8 +153,11 @@ echo "   log    : ~/.cache/caeliglow/caeliglow.log"
 echo
 if [[ "${CAELIGLOW_SESSION_ENTRY:-1}" == "1" ]]; then
   echo "Greeter: a CaeliGlow session entry was installed. Pick it at login to run this shell."
-  echo "CaeliGlow-only autostart — in your Hyprland Lua config, start the shell unconditionally:"
-  echo '  hl.on("hyprland.start", function() hl.exec_cmd("/usr/local/bin/caeliglow") end)'
+  echo "CaeliGlow-only autostart — in your Hyprland Lua config, start the shell UNCONDITIONAL and keep startup failures visible:"
+  echo '  hl.on("hyprland.start", function()'
+  echo '    hl.exec_cmd("sh -c \"mkdir -p ~/.cache/caeliglow; /usr/local/bin/caeliglow >>~/.cache/caeliglow/caeliglow.log 2>&1\"")'
+  echo '    hl.exec_cmd("systemctl --user start hyprpolkitagent")'
+  echo '  end)'
   echo "(Prefer a dual session? Branch on CAELIGLOW_SESSION==\"1\" to pick caeliglow and"
   echo " keep /usr/bin/noctalia for the other entries.)"
 fi

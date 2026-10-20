@@ -342,6 +342,52 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
 - **Status:** **compiled + regression-tested** (153/153); series 0001→0016 verified
   byte-identical on a pristine v5.3.0.
 
+## 0017 — External-monitor brightness works out of the box
+- **Files:** `src/system/brightness_service.cpp`, `src/cli/schema_msg.h`,
+  `src/config/config_types.h`, `src/config/schema/config_schema.cpp`,
+  `src/app/application_services.cpp`, `src/shell/control_center/tabs/monitor_tab.cpp`,
+  `src/shell/settings/settings_registry.cpp`, `assets/translations/en.json`,
+  `docs/user/services/brightness.mdx`, `docs/user/ipc/system-controls.mdx`,
+  `tests/brightness_service_test.cpp`
+- **What:** `enable_ddcutil` becomes **tri-state** (unset = auto). In auto mode DDC/CI
+  discovery is authoritative: connectors that have no kernel sysfs backlight are picked
+  up from `ddcutil` even when the compositor does not expose them as a Wayland output
+  (nested sessions, hot-docked externals), keyed by ddcutil's DRM connector name. An
+  explicit `true`/`false` preserves the old behaviour in both directions. Two new IPC
+  commands: **`brightness-rescan`** (re-run discovery and report targets) and
+  **`brightness-status`** (distinguish "no sysfs backlight" from "DDC disabled /
+  undiscovered"; `list-backlight-devices` is now documented as a raw listing, not a
+  health check). At startup CaeliGlow warns once (log + notification) when a legacy
+  `~/.config/noctalia` exists but the CaeliGlow namespace has no `[brightness]` config —
+  it never reads or rewrites the old namespace. Verified on real hardware: an HP LA2306
+  on DP-5 (bus /dev/i2c-11) is auto-discovered, `brightness-set DP-5 55` moves the panel
+  (confirmed via `ddcutil getvcp 0x10`), restored to 68.
+- **Status:** **compiled + tested** (four new brightness tests); nested-session acceptance
+  passed against a live external panel.
+
+## 0018 — v1.6 launcher, power menu, motion, logo and icon polish
+- **Files:** launcher (`launcher_panel.{h,cpp}`), power pill
+  (`caeliglow_power_panel.{h,cpp}`), panel/dock (`panel.h`, `panel_manager.cpp`),
+  hot corners (`hot_corners.{h,cpp}`), settings (`settings_registry.cpp`,
+  `settings_content_about.cpp`, `settings_window.h`, `settings_window_popups.cpp`),
+  config (`config_types.h`, `config_schema.cpp`, `ranges.h`), glyph layer
+  (`glyph_registry.cpp`, `ui/controls/button.{h,cpp}`), brand assets
+  (`assets/caeliglow/*`), `assets/translations/en.json`, `meson.build`,
+  `tests/glyph_registry_test.cpp`, `tests/config_schema_roundtrip_test.cpp`
+- **What:** the launcher is **attached by default** with a floating/attached setting and
+  independent **length + width** controls (card outlines, layout polish). The power pill
+  drops its outer border and gains a dedicated **Settings › CaeliGlow › Power menu**
+  subsection (presentation, concavity, width, icon size, gap); its trigger and opening
+  direction follow the pill's **left/right** position. Motion grows to **ten fluid morph
+  presets** (classic…calm) plus a shell-wide **reduced-motion** switch, all in Settings.
+  New attached **logo** assets are wired into the panel and a polished About card. Icons
+  settle into a cohesive **outlined house style** (stray filled glyphs dropped, the
+  unresolved `file-lock` glyph fixed) with a restrained **glyph-button hover lift** that
+  snaps under reduced motion.
+- **Status:** **compiled + tested** (154/154, incl. the new `glyph_registry` guard);
+  settings persistence for every new key covered by `config_schema_roundtrip`; series
+  0001→0018 verified byte-identical on a pristine v5.3.0.
+
 ---
 
 ## Notes on safety of the model

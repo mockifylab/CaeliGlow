@@ -69,7 +69,9 @@ Why this wins:
 - **Edge-docked surfaces & spring motion (1.5.0)** — the launcher docks flush to the
   bottom edge and the power pill docks to a screen edge (left or right, configurable),
   both with **concave screen-edge corners**; panels open with fluid spring easing and a
-  squash-and-stretch pulse (**Classic · Soft · Fizzy · Morphy**, tunable duration and
+  squash-and-stretch pulse (**now ten presets**: Classic · Soft · Fizzy · Morphy · Gentle ·
+  Glide · Fluid · Snappy · Bounce · Calm, plus a shell-wide reduce-motion switch, all with
+  tunable duration and
   elasticity) instead of linear slides. All of it lives in a new theme-aware
   **Settings › CaeliGlow** section and in `[caeliglow]` config. Edge-hover flicker is
   fixed (open panels stay open; triggers have a re-trigger cooldown).
@@ -78,6 +80,12 @@ Why this wins:
   now **installs new releases in place** — the update card shows the release's what's-new
   text and a one-shot "Install now" button that runs the quick-install over the running
   version, keeping settings and state.
+- **1.6.0 refinement.** The launcher docks attached by default with independent length and
+  width controls; the power pill is borderless with its own Settings subsection
+  (presentation, concavity, size, icon size, gap) and opens toward the pill's left/right
+  edge; the icon set settles into a cohesive outlined house style with a restrained
+  hover lift (reduced-motion aware); and external-monitor brightness works out of the box
+  via tri-state DDC/CI auto-discovery with `brightness-rescan` / `brightness-status`.
 
 The signature interactions ship **enabled by compiled-in defaults**, so a stock CaeliGlow
 build shows them with no config; everything stays additive and overridable.
@@ -97,8 +105,8 @@ build shows them with no config; everything stays additive and overridable.
 ## Quality bar (current evidence)
 
 - Baseline Noctalia v5.3.0 builds and links a working binary.
-- Patches 0001–0016 rebuild + relink cleanly.
-- `meson test` suite: **153/153 pass, 0 fail** (config schema/validate/override cover the
+- Patches 0001–0018 rebuild + relink cleanly.
+- `meson test` suite: **154/154 pass, 0 fail** (config schema/validate/override cover the
   new fields).
 - Standalone version/update logic tests: **all pass** (and wired into CI).
 - Nested Hyprland smoke test: shell starts and runs stable with hover-to-open, edges, the

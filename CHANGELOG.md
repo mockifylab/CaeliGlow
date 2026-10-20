@@ -6,9 +6,51 @@ from the single canonical `VERSION` file.
 
 ## [Unreleased]
 
-- `scripts/quick-install.sh` now restarts the running CaeliGlow shell in place after
-  installing, so "Install now" from Settings › About updates the *live* session to the
-  new version — no logout needed.
+_(nothing pending)_
+
+## [1.6.0] - 2026-10-20
+
+CaeliGlow 1.6.0 is the polish release: the launcher and power menu gain real sizing and
+presentation controls, panel motion grows to ten fluid presets with a shell-wide
+reduced-motion switch, the icon set settles into one cohesive outlined house style, and
+external-monitor brightness finally works out of the box. Delivered as patches
+**0017** (brightness) and **0018** (UI layer) over the same pinned Noctalia v5.3.0.
+
+### Added
+- **External-monitor brightness, out of the box (patch 0017).** `enable_ddcutil` is now
+  **tri-state** (unset = auto). In auto mode DDC/CI is authoritative: connectors with no
+  kernel sysfs backlight are discovered from `ddcutil` even when the compositor does not
+  expose them (nested sessions, hot-docked externals); an explicit `true`/`false` keeps
+  the old behaviour both ways. New IPC commands **`brightness-rescan`** (re-run discovery
+  and report targets) and **`brightness-status`** (separate "no sysfs backlight" from
+  "DDC disabled / undiscovered"). A startup warn-once fires when a legacy
+  `~/.config/noctalia` exists but the CaeliGlow namespace has no `[brightness]` config —
+  the old namespace is never read or rewritten. Verified on an HP LA2306 on DP-5
+  (`brightness-set DP-5 55` confirmed via `ddcutil getvcp 0x10`, restored to 68).
+- **Ten motion presets + reduced motion (patch 0018).** `motion` now spans
+  classic · soft · fizzy · morphy · gentle · glide · fluid · snappy · bounce · calm, plus a
+  shell-wide `reduce_motion` switch; all in Settings › CaeliGlow.
+- **Power-menu Settings subsection (patch 0018).** Presentation (edge-attached /
+  floating), concavity radius, pill width, overall scale, icon size and gap.
+- **Launcher length control (patch 0018).** `shell.launcher.height` alongside `width`,
+  plus a floating/attached setting (attached is now the default).
+
+### Changed
+- **Power pill is borderless** and its trigger / opening direction follow the pill's
+  left/right `power_edge`.
+- **Cohesive outlined icon house style (patch 0018).** Stray filled glyphs dropped from
+  state aliases, the unresolved `file-lock` glyph fixed, and glyph buttons get a small
+  centered hover lift that snaps flat under reduced motion.
+- **New attached logo assets** wired into the panel and a polished About card.
+- `scripts/quick-install.sh` restarts the running shell in place after installing, so
+  "Install now" updates the *live* session — no logout needed.
+
+### Verified in this release
+- Full debug rebuild + link clean; `meson test` **154/154 pass, 0 fail** (new
+  `glyph_registry` guard + brightness coverage; `config_schema_roundtrip` exercises every
+  new setting).
+- Series `0001→0018` applies cleanly onto a pristine v5.3.0 via `git am --3way`,
+  reconstructing the tree byte-for-byte.
 
 ## [1.5.1] - 2026-10-19
 

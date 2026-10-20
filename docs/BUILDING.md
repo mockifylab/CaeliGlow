@@ -20,6 +20,25 @@ pango harfbuzz libxkbcommon glib2 libsecret libsodium sdbus-cpp libpipewire
 wireplumber polkit pam curl libwebp libjxl libsndfile librsvg libqalculate libxml2
 md4c tomlplusplus libical nlohmann-json stb jemalloc`
 
+`install-deps.sh` also marks every dependency **explicit** (`pacman -D --asexplicit`).
+`pacman -S --needed` alone skips already-installed packages without changing their
+install reason, so a dep that arrived as another package's dependency (e.g.
+`libqalculate` via the distro `noctalia`) stays implicit and gets orphan-removed by a
+later `pacman -Rns` — which is how a live host once lost `libqalculate.so.23` and the
+shell stopped launching with a bare loader error.
+
+### Verifying runtime dependencies
+
+```sh
+./scripts/check-runtime-deps.sh            # checks the installed/built binary
+./scripts/check-runtime-deps.sh path/to/binary
+```
+
+It runs `ldd` and fails on any `not found` line, printing the pacman package that
+provides each missing soname, then smoke-launches the binary with `--version`.
+`quick-install.sh` runs it on the built **and** installed binary, and `pkgbuild/` runs
+it as its `check()` gate.
+
 ## Steps
 
 ```sh
@@ -94,3 +113,15 @@ re-linked incrementally (bar.cpp) without errors.
   TTY or a fresh Hyprland instance rather than over your current session.
 - Noctalia ships runtime assets; install the full tree (`meson install`), not just
   the binary.
+- **Startup failures are easy to misdiagnose** because `error while loading shared
+  libraries: …` is printed by the dynamic loader before the shell's own logger starts.
+  Launch it from a terminal once after any system update, or autostart it through a
+  logging wrapper in your Hyprland Lua config:
+  ```lua
+  hl.on("hyprland.start", function()
+    hl.exec_cmd("sh -c \"mkdir -p ~/.cache/caeliglow; /usr/local/bin/caeliglow >>~/.cache/caeliglow/caeliglow.log 2>&1\"")
+    hl.exec_cmd("systemctl --user start hyprpolkitagent")
+  end)
+  ```
+  If the shell vanishes at login, `./scripts/check-runtime-deps.sh` is the first
+  thing to run.

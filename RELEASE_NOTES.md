@@ -1,4 +1,4 @@
-# CaeliGlow 1.5.1
+# CaeliGlow 1.6.0
 
 **CaeliGlow** — a polished, **Noctalia-based** desktop shell for **CachyOS + Hyprland**.
 A small, documented **patch series over a pinned Noctalia `v5.3.0`**, rebuilt from source.
@@ -8,7 +8,35 @@ distinct, **visible-by-default** interactions.
 > **Not a rewrite, not a plugin.** Additive by default, reversible in one command, and it
 > never overwrites your distro `noctalia` package or touches boot/EFI/partitions.
 
-## What's new in 1.5.1
+## What's new in 1.6.0
+
+The polish release — everything you can see and touch gets more control, and the one thing
+that never worked now does.
+
+- **External-monitor brightness just works (patch 0017).** The DDC/CI switch is now
+  three-way: leave it unset and CaeliGlow auto-discovers any monitor that has no kernel
+  backlight — even in a nested session or hot-docked — keyed by its DRM connector, while
+  an explicit on/off still forces behaviour either way. Two new commands: **`brightness-rescan`**
+  re-runs discovery and tells you what it found; **`brightness-status`** separates "there is
+  no sysfs backlight" from "DDC is off / undiscovered". Verified live on an HP LA2306 over
+  DisplayPort. (If you still have an old `~/.config/noctalia`, CaeliGlow warns you once that
+  its brightness settings weren't migrated — it never touches the old files.)
+- **Ten motion presets + reduced motion (patch 0018).** Panel open/close now offers
+  Classic · Soft · Fizzy · Morphy · **Gentle · Glide · Fluid · Snappy · Bounce · Calm**, plus a
+  shell-wide **reduce-motion** switch that flattens every bounce and hover embellishment.
+- **A real Power-menu section in Settings (patch 0018).** The power pill is now borderless
+  and fully tunable — presentation (edge-attached or floating), concavity radius, width,
+  overall scale, icon size and gap — and its trigger and opening direction follow whichever
+  screen edge it docks to.
+- **Launcher sizing (patch 0018).** The launcher is **attached by default** and now has
+  independent **length and width** controls plus card-outline polish.
+- **One cohesive outlined icon set (patch 0018).** Stray filled glyphs are gone from state
+  icons, a broken icon is fixed, and glyph buttons get a subtle centered hover lift that
+  stays flat when reduce-motion is on.
+- **Fresh logo + About card**, and quick-install now **restarts your live session** after an
+  in-place update — no logout.
+
+## What's new in 1.5.1 (still in this release)
 
 - **The About update card does what it says.** When a newer release is found it now
   shows the **what's-new text** from the release notes and a prominent

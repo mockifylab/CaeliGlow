@@ -1,0 +1,710 @@
+From e6c72046e29a9d0a65e2b14871a4ec5972602c46 Mon Sep 17 00:00:00 2001
+From: caeliglow-validate <caeliglow@local>
+Date: Tue, 20 Oct 2026 10:07:56 +0500
+Subject: [PATCH] caeliglow: make external-monitor brightness work out of the
+ box
+
+- auto-enable DDC/CI discovery when a Wayland output has a connector but no
+  matching sysfs backlight; enable_ddcutil becomes tri-state and still
+  overrides in both directions
+- in auto mode, ddcutil is authoritative: external monitors reported over
+  I2C become controllable even when the compositor does not currently
+  expose that connector as a Wayland output (nested sessions, hot-docks);
+  an explicit enable_ddcutil preserves the original Wayland-connector filter
+- add brightness-rescan msg command that re-runs DDC discovery through the
+  same worker path used by enable_ddcutil changes and reports the targets
+- add brightness-status msg command that distinguishes no sysfs backlight
+  from DDC disabled/undiscovered; clarify that brightness-list-backlight-devices
+  is a raw sysfs view, not a health check
+- warn once at startup (log + notification) when ~/.config/noctalia exists
+  while the caeliglow namespace has no [brightness] config; the old namespace
+  is never read or rewritten
+
+Update brightness_service tests for the auto, explicit-false, and
+Wayland-unknown-external paths and the user docs for the new commands.
+---
+ assets/translations/en.json                   |   2 +-
+ docs/user/ipc/system-controls.mdx             |   4 +
+ docs/user/services/brightness.mdx             |  20 ++-
+ src/app/application_services.cpp              |  68 ++++++++
+ src/cli/schema_msg.h                          |  29 +++-
+ src/config/config_types.h                     |   4 +-
+ src/config/schema/config_schema.cpp           |   6 +-
+ src/shell/control_center/tabs/monitor_tab.cpp |   8 +-
+ src/shell/settings/settings_registry.cpp      |  11 +-
+ src/system/brightness_service.cpp             | 161 +++++++++++++++---
+ tests/brightness_service_test.cpp             |  62 +++++++
+ 11 files changed, 338 insertions(+), 37 deletions(-)
+
+diff --git a/assets/translations/en.json b/assets/translations/en.json
+index 8e680e859..7880aed62 100644
+--- a/assets/translations/en.json
++++ b/assets/translations/en.json
+@@ -2997,7 +2997,7 @@
+           "label": "Day Temperature"
+         },
+         "ddcutil": {
+-          "description": "Control external monitor brightness via DDC/CI",
++          "description": "Control external monitor brightness via DDC/CI. Discovery is on by default for monitors without a kernel backlight; turning this off disables DDC/CI entirely",
+           "label": "DDC/CI (ddcutil)",
+           "requires-ddcutil": "Install ddcutil to enable DDC/CI brightness control"
+         },
+diff --git a/docs/user/ipc/system-controls.mdx b/docs/user/ipc/system-controls.mdx
+index 757cd4fb9..08b49b1ee 100644
+--- a/docs/user/ipc/system-controls.mdx
++++ b/docs/user/ipc/system-controls.mdx
+@@ -59,9 +59,13 @@ Default step is 5% when not specified. Output volume is clamped to 100% unless `
+ | Raise one monitor | <IpcCommand command="brightness-up DP-1 10" /> | Raise brightness for one monitor. |
+ | Lower all monitors | <IpcCommand command="brightness-down * 5%" /> | Lower brightness on every monitor. |
+ | Show brightness OSD | <IpcCommand command="brightness-osd 72" /> | Show the brightness OSD at the given value without changing brightness. Useful when an external script controls brightness. |
++| Rescan DDC/CI | <IpcCommand command="brightness-rescan" /> | Re-run DDC/CI discovery in the background and report the candidate connectors - recovers missing external-monitor controls without opening the Monitor tab. |
++| Brightness status | <IpcCommand command="brightness-status" /> | Report sysfs backlight devices, the `enable_ddcutil` state (auto/on/off), and which controls were discovered. |
+ 
+ Targets can be `current`, `all`, `*`, a monitor connector name such as `eDP-1` or `DP-1`, or a monitor selector token. Values accept normalized `0.0` to `1.0` or percentage form such as `65`, `65%`, and `5%`.
+ 
++`brightness-list-backlight-devices` only lists raw `/sys/class/backlight` entries - it is not a health check. External-monitor-only rigs normally have no backlight devices there even when DDC/CI control works; use `brightness-status` to tell "no sysfs backlight" apart from "DDC/CI disabled or not yet discovered".
++
+ `brightness-osd` takes a value only - unlike `brightness-set`, it has no monitor target. The OSD starts on the focused output when `[osd].follow_focused_output` is enabled and stays there until the popup disappears; otherwise it appears on whichever monitors are configured under `[osd].monitors`.
+ 
+ ## Night light
+diff --git a/docs/user/services/brightness.mdx b/docs/user/services/brightness.mdx
+index d256e87c9..5daa1d35e 100644
+--- a/docs/user/services/brightness.mdx
++++ b/docs/user/services/brightness.mdx
+@@ -5,11 +5,13 @@ sidebar:
+   order: 3
+ ---
+ 
+-Brightness control uses the kernel backlight interface by default. `ddcutil` support is opt-in for external monitors that expose DDC/CI brightness.
++Brightness control uses the kernel backlight interface when one exists. For external monitors that expose DDC/CI brightness but have no kernel backlight device, `ddcutil` discovery runs automatically - no opt-in required. Set `enable_ddcutil` to `true` or `false` to override that decision explicitly.
+ 
+ ```toml
+ [brightness]
+-enable_ddcutil     = false
++# enable_ddcutil is unset by default = auto (DDC/CI is discovered for monitors without a kernel backlight)
++# enable_ddcutil   = true    # always try DDC/CI discovery
++# enable_ddcutil   = false   # never use DDC/CI, even for external monitors
+ ignore_mmids       = []     # e.g. ["ACI-ROG_PG279Q-10220"] - skip in all ddcutil commands
+ minimum_brightness = 0.0    # never let brightness drop below this floor (0.0 to 1.0)
+ sync_all_monitors = false   # if set to true, makes every display have the same brightness
+@@ -23,14 +25,15 @@ backend = "ddcutil"
+ ```
+ 
+ Notes:
+-- `enable_ddcutil = true` only enables DDC/CI discovery - it does not force every monitor to `ddcutil`.
++- `enable_ddcutil` is tri-state: unset means auto, `true` always enables DDC/CI discovery, `false` always disables it. Enabling only turns discovery on - it does not force every monitor to `ddcutil`.
++- In auto mode, `ddcutil` is authoritative: any external monitor it reports over I2C becomes a controllable display, even when the compositor does not currently expose that connector as a Wayland output (useful in nested sessions and for hot-docked externals). Setting `enable_ddcutil` explicitly restores the original filter that requires the compositor to know the connector.
+ - `ignore_mmids` passes `--ignore-mmid` to every `ddcutil` invocation. Run `ddcutil --verbose detect` to find monitor model id strings.
+ - `minimum_brightness` is an opt-in floor (default `0.0` = disabled). Any brightness change is clamped to at least this value, and the control center slider cannot go below it - useful to keep the screen from going completely dark.
+ - `sync_all_monitors` only syncs the brightnesses when one of the display brightnesses change, it does not actively sync them every now and then
+ - Per-monitor overrides use the same connector/description matching rules as bar monitor overrides.
+ - `backend = "auto"` prefers kernel backlight when available and falls back to `ddcutil`.
+ - `backend = "none"` hides brightness control for the matched monitor.
+-- `backlight_device` pins a monitor to a specific sysfs backlight device when a connector exposes more than one - accepts a bare name (`intel_backlight`) or a full path; run `noctalia msg brightness-list-backlight-devices` to list the available device names.
++- `backlight_device` pins a monitor to a specific sysfs backlight device when a connector exposes more than one - accepts a bare name (`intel_backlight`) or a full path; run `noctalia msg brightness-list-backlight-devices` to list the available device names. That command is a raw sysfs view, not a health check: external-monitor-only rigs normally have no backlight devices at all. Use `caeliglow msg brightness-status` to see which backend applies and what was discovered.
+ - `ddcutil` is treated as best-effort - repeated DDC failures cool down that monitor to avoid hammering the bus.
+ 
+ DDC/CI discovery runs in the background. If a monitor is not ready when Noctalia starts or outputs change,
+@@ -39,9 +42,12 @@ Working brightness controls remain available while other monitors are being disc
+ extend the total recovery time.
+ 
+ If controls are still missing after those retries, open **Control Center → Monitor** and use **Rescan DDC/CI monitors**
+-(the refresh icon) to start another discovery attempt and retry cycle. Changing brightness configuration also
+-starts a new cycle. Outputs configured with `backend = "none"` or `backend = "backlight"`, and outputs already
+-served by kernel backlight in `auto` mode, are excluded from DDC recovery.
++(the refresh icon) to start another discovery attempt and retry cycle - or do it from the CLI with
++`caeliglow msg brightness-rescan`, which re-runs `ddcutil detect` in the background and reports the candidate
++connectors. `caeliglow msg brightness-status` distinguishes "no sysfs backlight" from "DDC/CI disabled or not
++yet discovered". Changing brightness configuration also starts a new cycle. Outputs configured with
++`backend = "none"` or `backend = "backlight"`, and outputs already served by kernel backlight in `auto` mode,
++are excluded from DDC recovery.
+ 
+ ## Related IPC
+ 
+diff --git a/src/app/application_services.cpp b/src/app/application_services.cpp
+index 9459d2882..ebebc49bc 100644
+--- a/src/app/application_services.cpp
++++ b/src/app/application_services.cpp
+@@ -101,7 +101,9 @@
+ #include <cmath>
+ #include <csignal>
+ #include <cstdint>
++#include <cstdlib>
+ #include <filesystem>
++#include <fstream>
+ #include <limits>
+ #include <malloc.h>
+ #include <optional>
+@@ -124,6 +126,70 @@ namespace {
+     }
+   }
+ 
++  // CaeliGlow reads ~/.config/caeliglow (its own namespace since v1.4.0) and never rewrites the
++  // older ~/.config/noctalia one. If a user still has the legacy directory but no [brightness]
++  // config for CaeliGlow, their brightness settings silently stopped applying - warn once,
++  // read-only: the old namespace is neither imported nor touched.
++  void warnAboutUnmigratedNoctaliaConfig(NotificationManager& notifications) {
++    try {
++      const std::filesystem::path caeliglowDir{FileUtils::configDir()};
++
++      std::filesystem::path legacyDir;
++      if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg != nullptr && xdg[0] != '\0') {
++        legacyDir = std::string(xdg) + "/noctalia";
++      } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
++        legacyDir = std::string(home) + "/.config/noctalia";
++      } else {
++        return;
++      }
++
++      if (!std::filesystem::is_directory(legacyDir)) {
++        return;
++      }
++
++      bool brightnessConfigured = false;
++      if (std::filesystem::is_directory(caeliglowDir)) {
++        for (const auto& entry : std::filesystem::directory_iterator(caeliglowDir)) {
++          const auto path = entry.path();
++          if (!entry.is_regular_file() || path.extension() != ".toml") {
++            continue;
++          }
++          std::ifstream file{path};
++          std::string line;
++          while (std::getline(file, line)) {
++            if (line.rfind("[brightness]", 0) == 0U || line.rfind("[brightness.", 0) == 0U) {
++              brightnessConfigured = true;
++              break;
++            }
++          }
++          if (brightnessConfigured) {
++            break;
++          }
++        }
++      }
++      if (brightnessConfigured) {
++        return;
++      }
++
++      kLog.warn(
++          "legacy {} exists but {} has no [brightness] config; older settings were not migrated", legacyDir.string(),
++          caeliglowDir.string()
++      );
++      notifications.addInternal(
++          "CaeliGlow", "Brightness settings were not migrated",
++          "CaeliGlow reads "
++              + caeliglowDir.string()
++              + " and found no [brightness] config there. The older "
++              + legacyDir.string()
++              + " directory is ignored and was left untouched - copy your [brightness] "
++                "section over if you still need it.",
++          Urgency::Normal
++      );
++    } catch (const std::exception& e) {
++      kLog.warn("settings migration warning skipped: {}", e.what());
++    }
++  }
++
+   void syncGSettingsColorScheme(std::string_view mode) {
+     if (mode.empty()) {
+       return;
+@@ -1463,6 +1529,8 @@ void Application::initBrightnessAndPipewire() {
+     m_brightnessService.reset();
+   }
+ 
++  warnAboutUnmigratedNoctaliaConfig(m_notificationManager);
++
+   try {
+     m_pipewireService = std::make_unique<PipeWireService>();
+     m_wirePlumberMixer = std::make_unique<WirePlumberMixer>();
+diff --git a/src/cli/schema_msg.h b/src/cli/schema_msg.h
+index 3d89deeff..f690b00a5 100644
+--- a/src/cli/schema_msg.h
++++ b/src/cli/schema_msg.h
+@@ -308,7 +308,14 @@ namespace noctalia::cli {
+         false
+     };
+     inline constexpr Command brightnessListBacklightDevices{
+-        "brightness-list-backlight-devices", "List available sysfs backlight device names", {}, {}, {}, {}, {}, false
++        "brightness-list-backlight-devices",
++        "List raw sysfs backlight device names (not a health check; use brightness-status)",
++        {},
++        {},
++        {},
++        {},
++        {},
++        false
+     };
+     inline constexpr Command brightnessOsd{
+         "brightness-osd",
+@@ -320,6 +327,14 @@ namespace noctalia::cli {
+         {},
+         false
+     };
++    inline constexpr Command brightnessRescan{"brightness-rescan",
++                                              "Re-run DDC/CI brightness discovery and report discovered targets",
++                                              {},
++                                              {},
++                                              {},
++                                              {},
++                                              {},
++                                              false};
+     inline constexpr Command brightnessSet{"brightness-set",
+                                            "Set brightness (defaults to current monitor)",
+                                            {},
+@@ -328,6 +343,16 @@ namespace noctalia::cli {
+                                            kMsgBrightnessSetPositionals,
+                                            {},
+                                            false};
++    inline constexpr Command brightnessStatus{
++        "brightness-status",
++        "Report brightness backends: sysfs backlight vs DDC/CI discovery state",
++        {},
++        {},
++        {},
++        {},
++        {},
++        false
++    };
+     inline constexpr Command brightnessUp{
+         "brightness-up",
+         "Increase brightness (defaults to current monitor)",
+@@ -844,7 +869,9 @@ namespace noctalia::cli {
+       msg::brightnessDown,
+       msg::brightnessListBacklightDevices,
+       msg::brightnessOsd,
++      msg::brightnessRescan,
+       msg::brightnessSet,
++      msg::brightnessStatus,
+       msg::brightnessUp,
+       msg::caffeineDisable,
+       msg::caffeineEnable,
+diff --git a/src/config/config_types.h b/src/config/config_types.h
+index 71d2301bc..cb8ecb3fc 100644
+--- a/src/config/config_types.h
++++ b/src/config/config_types.h
+@@ -1523,7 +1523,9 @@ struct BrightnessMonitorOverride {
+ };
+ 
+ struct BrightnessConfig {
+-  bool enableDdcutil = false;
++  // Tri-state: unset = auto (discover DDC/CI for connectors with no kernel backlight),
++  // true = always try DDC/CI, false = never.
++  std::optional<bool> enableDdcutil;
+   bool syncBrightnessOfAllMonitors = false;
+   std::vector<std::string> ddcutilIgnoreMmids;
+   std::vector<BrightnessMonitorOverride> monitorOverrides;
+diff --git a/src/config/schema/config_schema.cpp b/src/config/schema/config_schema.cpp
+index 6afed2753..ba4258bc6 100644
+--- a/src/config/schema/config_schema.cpp
++++ b/src/config/schema/config_schema.cpp
+@@ -487,6 +487,10 @@ namespace noctalia::config::schema {
+   }
+ 
+   namespace {
++    // Declared with the other field helpers further down; used by brightnessSchema().
++    template <typename Struct>
++    Field<Struct> optionalBoolField(std::optional<bool> Struct::* member, std::string_view key);
++
+     const Schema<BrightnessMonitorOverride>& brightnessMonitorSchema() {
+       static const Schema<BrightnessMonitorOverride> s = {
+           field(&BrightnessMonitorOverride::match, "match"),
+@@ -507,7 +511,7 @@ namespace noctalia::config::schema {
+ 
+   const Schema<BrightnessConfig>& brightnessSchema() {
+     static const Schema<BrightnessConfig> s = {
+-        field(&BrightnessConfig::enableDdcutil, "enable_ddcutil"),
++        optionalBoolField(&BrightnessConfig::enableDdcutil, "enable_ddcutil"),
+         field(&BrightnessConfig::syncBrightnessOfAllMonitors, "sync_all_monitors"),
+         field(&BrightnessConfig::ddcutilIgnoreMmids, "ignore_mmids"),
+         field(&BrightnessConfig::minimumBrightness, "minimum_brightness", kUnitRange),
+diff --git a/src/shell/control_center/tabs/monitor_tab.cpp b/src/shell/control_center/tabs/monitor_tab.cpp
+index cb0c4b17a..5f06c501b 100644
+--- a/src/shell/control_center/tabs/monitor_tab.cpp
++++ b/src/shell/control_center/tabs/monitor_tab.cpp
+@@ -135,10 +135,14 @@ std::unique_ptr<Flex> MonitorTab::createHeaderActions() {
+   return row;
+ }
+ 
+-// The rescan only re-runs ddcutil detect, so it is meaningless without DDC/CI.
++// The rescan only re-runs ddcutil detect, so it is hidden when DDC/CI is explicitly disabled.
++// In auto mode (key unset) it stays visible because discovery runs for kernel-backlight-less
++// connectors.
+ void MonitorTab::syncHeaderActions() {
+   if (m_rescanButton != nullptr) {
+-    m_rescanButton->setVisible(m_configService != nullptr && m_configService->config().brightness.enableDdcutil);
++    m_rescanButton->setVisible(
++        m_configService != nullptr && m_configService->config().brightness.enableDdcutil.value_or(true)
++    );
+   }
+ }
+ 
+diff --git a/src/shell/settings/settings_registry.cpp b/src/shell/settings/settings_registry.cpp
+index f5b97af3a..b0591cd26 100644
+--- a/src/shell/settings/settings_registry.cpp
++++ b/src/shell/settings/settings_registry.cpp
+@@ -3121,7 +3121,8 @@ namespace settings {
+         env.ddcutilAvailable ? tr("settings.schema.services.ddcutil.description")
+                              : tr("settings.schema.services.ddcutil.requires-ddcutil"),
+         {"brightness", "enable_ddcutil"},
+-        ToggleSetting{.checked = cfg.brightness.enableDdcutil, .enabled = env.ddcutilAvailable}, "monitor ddcutil"
++        ToggleSetting{.checked = cfg.brightness.enableDdcutil.value_or(true), .enabled = env.ddcutilAvailable},
++        "monitor ddcutil"
+     ));
+     entries.push_back(makeEntry(
+         SettingsSection::Services, "brightness", tr("settings.schema.services.minimum-brightness.label"),
+@@ -4180,8 +4181,8 @@ namespace settings {
+       duration.valueSuffix = "ms";
+       entries.push_back(makeEntry(
+           SettingsSection::CaeliGlow, "motion", tr("settings.schema.caeliglow.duration-ms.label"),
+-          tr("settings.schema.caeliglow.duration-ms.description"), {"caeliglow", "duration_ms"},
+-          std::move(duration), "animation speed open panel ms duration timing"
++          tr("settings.schema.caeliglow.duration-ms.description"), {"caeliglow", "duration_ms"}, std::move(duration),
++          "animation speed open panel ms duration timing"
+       ));
+     }
+     {
+@@ -4189,8 +4190,8 @@ namespace settings {
+           sliderFor(cfg.caeliglow.elasticity, noctalia::config::schema::kCaeliGlowElasticityRange, false);
+       SettingEntry e = makeEntry(
+           SettingsSection::CaeliGlow, "motion", tr("settings.schema.caeliglow.elasticity.label"),
+-          tr("settings.schema.caeliglow.elasticity.description"), {"caeliglow", "elasticity"},
+-          std::move(elasticity), "spring bounce overshoot fizzy morphy strength squash"
++          tr("settings.schema.caeliglow.elasticity.description"), {"caeliglow", "elasticity"}, std::move(elasticity),
++          "spring bounce overshoot fizzy morphy strength squash"
+       );
+       e.visibleWhen = [](const Config& conf) {
+         return conf.caeliglow.motion == CaeliGlowConfig::Motion::Fizzy
+diff --git a/src/system/brightness_service.cpp b/src/system/brightness_service.cpp
+index fb2e06a4e..5e8fea4a8 100644
+--- a/src/system/brightness_service.cpp
++++ b/src/system/brightness_service.cpp
+@@ -99,6 +99,11 @@ namespace {
+     std::chrono::steady_clock::time_point dueAt;
+     std::vector<std::string> ignoreMmids;
+     std::set<std::string> connectors;
++    // Auto mode (enable_ddcutil unset): ddcutil is authoritative. Accept any connector it
++    // reports - including external monitors the compositor does not currently expose as a
++    // Wayland output (nested sessions, hot-docked displays). An explicit enable_ddcutil keeps
++    // the historical filter intact.
++    bool acceptAnyConnector = false;
+     std::map<int, std::string> pinnedConnectors;
+     std::set<std::pair<std::string, int>> controlledDisplays;
+     std::map<std::pair<std::string, int>, std::uint64_t> writeEpochs;
+@@ -148,6 +153,27 @@ namespace {
+   constexpr auto kLogindManagerInterface = "org.freedesktop.login1.Manager";
+   constexpr auto kLogindSessionInterface = "org.freedesktop.login1.Session";
+ 
++  // Raw kernel view only - an empty list is normal for external-monitor-only rigs and does not
++  // mean brightness control is unavailable (DDC/CI may still work); see brightness-status.
++  std::vector<std::string> listSysfsBacklightDevices() {
++    std::vector<std::string> names;
++    const std::string backlightDir = "/sys/class/backlight";
++    DIR* dir = ::opendir(backlightDir.c_str());
++    if (dir == nullptr) {
++      return names;
++    }
++    while (auto* entry = ::readdir(dir)) {
++      const std::string name = entry->d_name;
++      if (name == "." || name == "..") {
++        continue;
++      }
++      names.push_back(name);
++    }
++    ::closedir(dir);
++    std::ranges::sort(names);
++    return names;
++  }
++
+   std::string joinBrightnessDisplayIds(const BrightnessService& service) {
+     std::string out;
+     for (const auto& display : service.displays()) {
+@@ -598,7 +624,7 @@ namespace {
+           current = DdcCandidate{};
+           return;
+         }
+-        if (!job.connectors.contains(connector)) {
++        if (!job.acceptAnyConnector && !job.connectors.contains(connector)) {
+           current = DdcCandidate{};
+           return;
+         }
+@@ -1043,7 +1069,7 @@ struct BrightnessService::Impl {
+       pendingDetect.reset();
+       workerCv.notify_all();
+     }
+-    if (!activeConfig.enableDdcutil) {
++    if (!ddcDiscoveryEnabled()) {
+       return;
+     }
+     const auto connectors = ddcConnectors();
+@@ -1052,7 +1078,7 @@ struct BrightnessService::Impl {
+     }
+     if (!process::commandExists("ddcutil")) {
+       if (!warnedMissingDdcutil) {
+-        kLog.warn("brightness.enable_ddcutil is set but ddcutil is not installed");
++        kLog.warn("ddcutil discovery is active but the ddcutil command is not installed");
+         warnedMissingDdcutil = true;
+       }
+       return;
+@@ -1065,6 +1091,7 @@ struct BrightnessService::Impl {
+         .dueAt = std::chrono::steady_clock::now() + delay,
+         .ignoreMmids = activeConfig.ddcutilIgnoreMmids,
+         .connectors = connectors,
++        .acceptAnyConnector = !activeConfig.enableDdcutil.has_value(),
+         .pinnedConnectors = pinnedConnectorByBus(activeConfig, wayland),
+         .cancel = discoveryCancel,
+     };
+@@ -1100,6 +1127,76 @@ struct BrightnessService::Impl {
+     scheduleDdcDetect(delay, false);
+   }
+ 
++  // Tri-state enablement: unset means auto - discover DDC/CI whenever a connector has no
++  // kernel backlight; an explicit brightness.enable_ddcutil overrides in both directions.
++  [[nodiscard]] bool ddcDiscoveryEnabled() const { return activeConfig.enableDdcutil.value_or(true); }
++
++  [[nodiscard]] std::string ddcEnablementLabel() const {
++    if (!activeConfig.enableDdcutil.has_value()) {
++      return "auto";
++    }
++    return *activeConfig.enableDdcutil ? "true (explicitly enabled)" : "false (explicitly disabled)";
++  }
++
++  [[nodiscard]] std::string discoverySummary() const {
++    auto join = []<typename Range>(const Range& values) {
++      std::string joined;
++      for (const auto& value : values) {
++        if (!joined.empty()) {
++          joined += ", ";
++        }
++        joined += value;
++      }
++      return joined;
++    };
++
++    std::string out;
++    const std::vector<std::string> sysfsDevices = listSysfsBacklightDevices();
++    out += "sysfs backlight devices: " + (sysfsDevices.empty() ? std::string("none") : join(sysfsDevices)) + "\n";
++    out += "enable_ddcutil: " + ddcEnablementLabel() + "\n";
++    out += std::string("ddcutil command: ") + (process::commandExists("ddcutil") ? "installed" : "missing") + "\n";
++
++    const auto candidates = ddcConnectors();
++    out += "ddc candidates (connectors without a kernel backlight): "
++        + (candidates.empty() ? std::string("none") : join(candidates))
++        + "\n";
++
++    if (internals.empty()) {
++      out += "discovered controls: none\n";
++      return out;
++    }
++    for (const auto& display : internals) {
++      out += "discovered control: " + display.connectorName + " ";
++      if (display.backend == RuntimeBackend::Ddcutil) {
++        out += "via ddcutil bus " + std::to_string(display.ddcBus);
++      } else {
++        out += "via sysfs backlight " + display.backlightName;
++      }
++      if (display.quarantined) {
++        out += " (quarantined after repeated failures)";
++      }
++      out += "\n";
++    }
++    return out;
++  }
++
++  std::string rescanReport() {
++    if (!ddcDiscoveryEnabled()) {
++      return "error: DDC/CI discovery is explicitly disabled (brightness.enable_ddcutil = false)\n"
++          + discoverySummary();
++    }
++    std::string out = "rescan started: ddcutil detect will run in the background\n";
++    out += discoverySummary();
++    scheduleDdcDetect();
++    return out;
++  }
++
++  [[nodiscard]] std::string statusReport() const {
++    const bool controllable =
++        std::ranges::any_of(publicDisplays, [](const BrightnessDisplay& display) { return display.controllable; });
++    return std::string("brightness available: ") + (controllable ? "yes" : "no") + "\n" + discoverySummary();
++  }
++
+   void rebuildPublic() {
+     publicDisplays.clear();
+     publicDisplays.reserve(internals.size() + wayland.outputs().size());
+@@ -1495,16 +1592,24 @@ struct BrightnessService::Impl {
+       }
+ 
+       const WaylandOutput* output = findOutputByConnector(wayland, candidate.connectorName);
+-      if (output == nullptr) {
++      // Auto mode (enable_ddcutil unset): trust ddcutil's view for external monitors the
++      // compositor does not currently expose - a nested session sees only its virtual output,
++      // and a hot-docked external is not on Wayland until enabled. An explicit enable_ddcutil
++      // keeps the original requirement (compositor must know the connector).
++      const bool trustDdcutil = !activeConfig.enableDdcutil.has_value();
++      if (output == nullptr && !trustDdcutil) {
+         kLog.debug(
+             "ddcutil: skipping bus {} because connector '{}' is not active", candidate.bus, candidate.connectorName
+         );
+         continue;
+       }
+ 
+-      const BrightnessBackendPreference preference = backendPreferenceForOutput(activeConfig, output);
+-      if (preference == BrightnessBackendPreference::None || preference == BrightnessBackendPreference::Backlight) {
+-        continue;
++      BrightnessBackendPreference preference = BrightnessBackendPreference::Auto;
++      if (output != nullptr) {
++        preference = backendPreferenceForOutput(activeConfig, output);
++        if (preference == BrightnessBackendPreference::None || preference == BrightnessBackendPreference::Backlight) {
++          continue;
++        }
+       }
+ 
+       const bool hasBacklight = std::ranges::any_of(internals, [&candidate](const DisplayInternal& display) {
+@@ -1555,7 +1660,12 @@ struct BrightnessService::Impl {
+       display.maxRaw = candidate.maxRaw;
+       display.pub.id = candidate.connectorName;
+       display.pub.brightness = normalizedBrightness(candidate.currentRaw, candidate.maxRaw);
+-      applyOutputMetadata(display.pub, *output);
++      if (output != nullptr) {
++        applyOutputMetadata(display.pub, *output);
++      }
++      if (display.pub.label.empty()) {
++        display.pub.label = candidate.label.empty() ? candidate.connectorName : candidate.label;
++      }
+       internals.push_back(std::move(display));
+ 
+       kLog.info(
+@@ -1883,21 +1993,34 @@ void BrightnessService::registerIpc(IpcService& ipc, std::function<void(BatchCha
+   ipc.bind(
+       noctalia::cli::msg::brightnessListBacklightDevices,
+       [](const std::string& /*args*/) -> std::string {
+-        const std::string backlightDir = "/sys/class/backlight";
+-        DIR* dir = ::opendir(backlightDir.c_str());
+-        if (dir == nullptr) {
+-          return "error: no backlight devices available\n";
++        const std::vector<std::string> names = listSysfsBacklightDevices();
++        if (names.empty()) {
++          return "error: no sysfs backlight devices (external monitors may still be controllable "
++                 "over DDC/CI; run `brightness-status`)\n";
+         }
+         std::string result;
+-        while (auto* entry = ::readdir(dir)) {
+-          const std::string name = entry->d_name;
+-          if (name == "." || name == "..") {
+-            continue;
+-          }
++        for (const auto& name : names) {
+           result += name + "\n";
+         }
+-        ::closedir(dir);
+-        return result.empty() ? "error: no backlight devices available\n" : result;
++        return result;
++      },
++      IpcService::HandlerOptions{.actionEditorVisibility = IpcService::ActionEditorVisibility::Hidden}
++  );
++
++  ipc.bind(noctalia::cli::msg::brightnessRescan, [this](const std::string& args) -> std::string {
++    if (!noctalia::ipc::splitWords(args).empty()) {
++      return "error: brightness-rescan takes no arguments\n";
++    }
++    return m_impl->rescanReport();
++  });
++
++  ipc.bind(
++      noctalia::cli::msg::brightnessStatus,
++      [this](const std::string& args) -> std::string {
++        if (!noctalia::ipc::splitWords(args).empty()) {
++          return "error: brightness-status takes no arguments\n";
++        }
++        return m_impl->statusReport();
+       },
+       IpcService::HandlerOptions{.actionEditorVisibility = IpcService::ActionEditorVisibility::Hidden}
+   );
+diff --git a/tests/brightness_service_test.cpp b/tests/brightness_service_test.cpp
+index b4c591f72..6ed355115 100644
+--- a/tests/brightness_service_test.cpp
++++ b/tests/brightness_service_test.cpp
+@@ -293,6 +293,12 @@ namespace {
+       if (mode == "detect-empty" && count == 1) {
+         return 0;
+       }
++      if (mode == "external-only") {
++        // Simulates an external monitor the compositor does not currently expose - ddcutil
++        // still sees it over I2C. Exercises the trust-ddcutil branch of applyDetectCompletion.
++        std::println("Display 1\n   I2C bus: /dev/i2c-71\n   DRM connector: DP-EXTERNAL\n   Model: Simulated external");
++        return 0;
++      }
+       for (int index = 0; index < readCount(state / "outputs"); ++index) {
+         const auto busMapping = state / ("bus-" + std::to_string(index));
+         const int detectedBus = fs::exists(busMapping) ? readCount(busMapping) : 71 + index;
+@@ -471,6 +477,58 @@ namespace {
+     TEST_CHECK(fixture.ddc.count("detect") == attempts);
+   }
+ 
++  // enable_ddcutil unset (auto) must still discover DDC/CI for connectors without a kernel
++  // backlight - no explicit opt-in required.
++  void checkAutoDiscoveryWithoutExplicitEnable() {
++    Fixture fixture("blocked-detect");
++    TEST_CHECK(fixture.waitFor([&fixture]() { return fixture.ddc.exists("held-detect"); }));
++    fixture.config.enableDdcutil = false;
++    fixture.service->reload(fixture.config);
++    fixture.config.enableDdcutil = std::nullopt;
++    fixture.config.monitorOverrides.clear();
++    fixture.ddc.set("mode", "ready");
++    fixture.service->reload(fixture.config);
++    TEST_CHECK(fixture.waitFor([&fixture]() { return fixture.controllable(); }));
++    TEST_CHECK(fixture.brightnessIs(0.4F));
++  }
++
++  // An explicit enable_ddcutil = false overrides auto discovery in the other direction.
++  void checkExplicitDisableBlocksAutoDiscovery() {
++    Fixture fixture("blocked-detect");
++    TEST_CHECK(fixture.waitFor([&fixture]() { return fixture.ddc.exists("held-detect"); }));
++    fixture.config.enableDdcutil = false;
++    fixture.config.monitorOverrides.clear();
++    fixture.service->reload(fixture.config);
++    fixture.ddc.set("mode", "ready");
++    fixture.observe(1500ms);
++    TEST_CHECK(!fixture.controllable());
++    TEST_CHECK(fixture.ddc.count("detect") == 1);
++  }
++
++  // In auto mode, ddcutil is authoritative: a Wayland-unknown external monitor is still
++  // surfaced as a controllable display so the CLI can address it by its connector name.
++  void checkAutoDiscoversNonWaylandExternal() {
++    Fixture fixture("external-only");
++    fixture.config.enableDdcutil = std::nullopt;
++    fixture.config.monitorOverrides.clear();
++    fixture.service->reload(fixture.config);
++    TEST_CHECK(fixture.waitFor([&fixture]() {
++      const auto* display = fixture.service->findDisplay("DP-EXTERNAL");
++      return display != nullptr && display->controllable;
++    }));
++  }
++
++  // With enable_ddcutil explicitly set, the historical Wayland-connector filter is preserved:
++  // ddcutil results are not silently promoted into controllable displays.
++  void checkExplicitEnableRespectsWaylandFilter() {
++    Fixture fixture("external-only");
++    fixture.config.enableDdcutil = true;
++    fixture.config.monitorOverrides.clear();
++    fixture.service->reload(fixture.config);
++    fixture.observe(1200ms);
++    TEST_CHECK(fixture.service->findDisplay("DP-EXTERNAL") == nullptr);
++  }
++
+   void checkOutputRemovalCancelsRetry() {
+     Fixture fixture("always-fail");
+     TEST_CHECK(fixture.waitFor([&fixture]() {
+@@ -504,6 +562,10 @@ int main(int argc, char** argv) {
+   checkDestructionCancelsDiscovery();
+   checkDisableCancelsDelayedDiscovery();
+   checkExclusionsStopRetries();
++  checkAutoDiscoveryWithoutExplicitEnable();
++  checkExplicitDisableBlocksAutoDiscovery();
++  checkAutoDiscoversNonWaylandExternal();
++  checkExplicitEnableRespectsWaylandFilter();
+   checkOutputRemovalCancelsRetry();
+   return 0;
+ }
+-- 
+2.56.0
+
