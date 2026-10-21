@@ -23,21 +23,34 @@ if [[ "${EUID}" -eq 0 ]]; then
   exit 1
 fi
 
+# Privilege helper. From a real terminal we use sudo and its normal password
+# prompt (sudo reads the passphrase from the controlling tty even when this
+# script is piped). When the in-shell updater runs this fully detached there is
+# no controlling terminal, so we use pkexec instead, which raises a graphical
+# polkit prompt. meson/pacman are resolved to absolute paths because pkexec
+# sanitises PATH for the child.
+if [[ -t 1 ]] || ! command -v pkexec >/dev/null 2>&1; then
+  SUDO=(sudo)
+else
+  SUDO=(pkexec)
+fi
+run_priv() { local bin="$1"; shift; "${SUDO[@]}" "$bin" "$@"; }
+
 if ! command -v git >/dev/null 2>&1; then
   echo ">> git not found; installing it (additive only)."
-  sudo pacman -S --needed --noconfirm git
+  run_priv "$(command -v pacman)" -S --needed --noconfirm git
 fi
 
 echo ">> Fetching CaeliGlow ($BRANCH) with the pinned Noctalia submodule into $SRC"
 if [[ -d "$SRC/.git" ]]; then
-  git -C "$SRC" fetch --depth 1 origin "$BRANCH"
+  git -C "$SRC" fetch --depth 1 --progress origin "$BRANCH"
   git -C "$SRC" checkout "$BRANCH"
   git -C "$SRC" reset --hard "origin/$BRANCH"
   git -C "$SRC" submodule update --init --recursive
 else
   # Full submodule clone (no --shallow-submodules): git am --3way needs the
   # pinned tree's history to stay reliable on every machine.
-  git clone --depth 1 --branch "$BRANCH" --recurse-submodules "$REPO" "$SRC"
+  git clone --depth 1 --progress --branch "$BRANCH" --recurse-submodules "$REPO" "$SRC"
 fi
 
 echo ">> Installing build dependencies (additive only; no removals)."
@@ -84,27 +97,28 @@ fi
 "$SRC/scripts/check-runtime-deps.sh" "$PWD/build-release/noctalia"
 
 echo ">> Installing into $PREFIX (the only step that needs root)."
-sudo meson install -C "$PWD/build-release" --no-rebuild
+run_priv "$(command -v meson)" install -C "$PWD/build-release" --no-rebuild
 
 # Ship under the CaeliGlow name so we never shadow the distro `noctalia` binary.
 if [[ -f "$PREFIX/bin/noctalia" ]]; then
-  sudo mv -f "$PREFIX/bin/noctalia" "$PREFIX/bin/caeliglow"
+  "${SUDO[@]}" mv -f "$PREFIX/bin/noctalia" "$PREFIX/bin/caeliglow"
 fi
 
 # Re-check the INSTALLED binary (same loader path the session will hit).
 "$SRC/scripts/check-runtime-deps.sh" "$PREFIX/bin/caeliglow"
 DESK="$PREFIX/share/applications/dev.noctalia.Noctalia.desktop"
 if [[ -f "$DESK" ]]; then
-  sudo sed -i -e 's|^Exec=.*|Exec='"$PREFIX"'/bin/caeliglow|' \
+  "${SUDO[@]}" sed -i -e 's|^Exec=.*|Exec='"$PREFIX"'/bin/caeliglow|' \
               -e '/^TryExec=/d' -e 's|^Name=.*|Name=CaeliGlow|' "$DESK"
-  sudo mv -f "$DESK" "$PREFIX/share/applications/caeliglow.desktop"
+  "${SUDO[@]}" mv -f "$DESK" "$PREFIX/share/applications/caeliglow.desktop"
 fi
 
 # Greeter session entry: pick "CaeliGlow" at login to start your Hyprland session
 # with the CaeliGlow shell. Opt out with CAELIGLOW_SESSION_ENTRY=0.
 if [[ "${CAELIGLOW_SESSION_ENTRY:-1}" == "1" ]]; then
-  sudo mkdir -p "$PREFIX/share/wayland-sessions"
-  sudo tee "$PREFIX/bin/caeliglow-session" >/dev/null <<'EOF'
+  "${SUDO[@]}" mkdir -p "$PREFIX/share/wayland-sessions"
+  CG_TMP="$(mktemp)"
+  cat >"$CG_TMP" <<'EOF'
 #!/bin/sh
 # CaeliGlow session launcher (invoked by the greeter's "CaeliGlow" entry).
 # Starts the SAME Hyprland session, marked so the Hyprland Lua autostart
@@ -112,8 +126,8 @@ if [[ "${CAELIGLOW_SESSION_ENTRY:-1}" == "1" ]]; then
 export CAELIGLOW_SESSION=1
 exec /usr/bin/start-hyprland
 EOF
-  sudo chmod 755 "$PREFIX/bin/caeliglow-session"
-  sudo tee "$PREFIX/share/wayland-sessions/caeliglow.desktop" >/dev/null <<'EOF'
+  "${SUDO[@]}" install -m 755 "$CG_TMP" "$PREFIX/bin/caeliglow-session"
+  cat >"$CG_TMP" <<'EOF'
 [Desktop Entry]
 Name=CaeliGlow
 Comment=Hyprland session with the CaeliGlow shell
@@ -122,7 +136,8 @@ Type=Application
 DesktopNames=Hyprland
 Keywords=tiling;wayland;compositor;caeliglow;noctalia;
 EOF
-  sudo chmod 644 "$PREFIX/share/wayland-sessions/caeliglow.desktop"
+  "${SUDO[@]}" install -m 644 "$CG_TMP" "$PREFIX/share/wayland-sessions/caeliglow.desktop"
+  rm -f "$CG_TMP"
 fi
 
 # In-place update: if this user's session is already running the CaeliGlow shell,

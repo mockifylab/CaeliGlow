@@ -14,6 +14,8 @@
 //     update script, which itself backs up and validates before touching files.
 #pragma once
 
+#include <algorithm>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -194,6 +196,92 @@ inline UpdateResult evaluate(const std::string& installedVersion, int status, co
     res.message = "You\u2019re using the latest CaeliGlow release.";
   }
   return res;
+}
+
+// ── In-place install progress (no-terminal updater) ────────────────────────────
+// The About page runs scripts/quick-install.sh fully detached, redirecting all of
+// its output to a log file it then polls. This turns that captured output into a
+// single 0..1 fraction plus a short phase label. Progress bands: download (git
+// "Receiving objects") 0.05-0.35, build (ninja "[n/m]") 0.36-0.85, install 0.87,
+// shell restart 0.95. The launcher appends a final "CAELIGLOW_UPDATE_EXIT=<code>"
+// sentinel that marks completion. Pure and side-effect free so it is unit testable
+// against captured installer logs.
+struct InstallProgress {
+  float fraction = 0.0F; // 0..1 overall
+  std::string phase;     // human label for the current stage
+  bool done = false;     // exit sentinel seen
+  bool failed = false;   // exit sentinel was non-zero
+  std::string error;     // last error-looking line, shown when failed
+};
+
+inline InstallProgress parseInstallProgress(const std::string& log) {
+  InstallProgress out;
+  out.fraction = 0.02F;
+  out.phase = "Starting update\u2026";
+
+  static const std::regex receiving(R"(Receiving objects:\s*([0-9]{1,3})%)");
+  static const std::regex deltas(R"(Resolving deltas:\s*([0-9]{1,3})%)");
+  static const std::regex ninja(R"(\[([0-9]+)/([0-9]+)\])");
+  static const std::regex exitSentinel(R"(CAELIGLOW_UPDATE_EXIT=([0-9]+))");
+
+  std::smatch m;
+  std::size_t pos = 0;
+  while (pos <= log.size()) {
+    const std::size_t nl = log.find('\n', pos);
+    std::string line = (nl == std::string::npos) ? log.substr(pos) : log.substr(pos, nl - pos);
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+
+    if (std::regex_search(line, m, exitSentinel)) {
+      out.done = true;
+      out.failed = (m[1].str() != "0");
+      out.fraction = out.failed ? out.fraction : 1.0F;
+      out.phase = out.failed ? "Update failed." : "Update applied \u2014 restarting the shell\u2026";
+    } else if (std::regex_search(line, m, receiving)) {
+      const int pct = std::stoi(m[1].str());
+      out.fraction = 0.05F + static_cast<float>(pct) / 100.0F * 0.30F;
+      out.phase = "Downloading CaeliGlow\u2026 " + std::to_string(pct) + "%";
+    } else if (std::regex_search(line, m, deltas)) {
+      out.fraction = std::max(out.fraction, 0.33F);
+      out.phase = "Downloading CaeliGlow\u2026";
+    } else if (line.rfind(">> Installing build dependencies", 0) == 0) {
+      out.fraction = std::max(out.fraction, 0.34F);
+      out.phase = "Installing build dependencies\u2026";
+    } else if (line.rfind(">> Applying the CaeliGlow patch series", 0) == 0) {
+      out.fraction = std::max(out.fraction, 0.35F);
+      out.phase = "Applying the patch series\u2026";
+    } else if (line.rfind(">> Building CaeliGlow", 0) == 0) {
+      out.fraction = std::max(out.fraction, 0.36F);
+      out.phase = "Building CaeliGlow\u2026";
+    } else if (std::regex_search(line, m, ninja)) {
+      const long n = std::stol(m[1].str());
+      const long total = std::stol(m[2].str());
+      const float frac = total > 0 ? static_cast<float>(n) / static_cast<float>(total) : 0.0F;
+      out.fraction = std::max(out.fraction, 0.36F + frac * 0.49F);
+      out.phase = "Building CaeliGlow\u2026 " + m[1].str() + "/" + m[2].str();
+    } else if (line.rfind(">> Installing into", 0) == 0) {
+      out.fraction = std::max(out.fraction, 0.87F);
+      out.phase = "Installing\u2026";
+    } else if (line.find("Restarting the running CaeliGlow shell") != std::string::npos) {
+      out.fraction = std::max(out.fraction, 0.95F);
+      out.phase = "Applying update \u2014 restarting the shell\u2026";
+    } else if (line.rfind(">> Installed. Summary:", 0) == 0) {
+      out.fraction = std::max(out.fraction, 0.97F);
+    }
+
+    if (line.find("error:") != std::string::npos || line.rfind("E: ", 0) == 0) {
+      out.error = line;
+    }
+
+    if (nl == std::string::npos) {
+      break;
+    }
+    pos = nl + 1;
+  }
+
+  out.fraction = std::clamp(out.fraction, 0.0F, 1.0F);
+  return out;
 }
 
 }  // namespace caeliglow

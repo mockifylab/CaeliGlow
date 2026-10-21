@@ -1,4 +1,4 @@
-# CaeliGlow 1.6.0
+# CaeliGlow 1.6.1
 
 **CaeliGlow** — a polished, **Noctalia-based** desktop shell for **CachyOS + Hyprland**.
 A small, documented **patch series over a pinned Noctalia `v5.3.0`**, rebuilt from source.
@@ -7,6 +7,22 @@ distinct, **visible-by-default** interactions.
 
 > **Not a rewrite, not a plugin.** Additive by default, reversible in one command, and it
 > never overwrites your distro `noctalia` package or touches boot/EFI/partitions.
+
+## What's new in 1.6.1
+
+Updates stop feeling like a shell command and start feeling like part of the shell.
+
+- **In-place updates, no terminal, live progress (patch 0019).** Settings › About →
+  **"Install vX now"** now does the whole job without ever opening a terminal window.
+  It downloads the new release, rebuilds it, and applies it while a **live progress bar
+  and phase label** track the real download / build / install steps, then **restarts the
+  running CaeliGlow into the new version** automatically — your settings and state are
+  kept. The installer runs fully detached so it survives that restart.
+- **Root, politely.** When the updater needs to install build dependencies or run
+  `meson install`, it raises a normal **polkit password prompt** (`pkexec`) instead of
+  borrowing a terminal; from a terminal it still just uses `sudo`.
+- **A new GitHub hero.** The repository header now shows a single authored **eclipse +
+  wordmark** image instead of the older animated crescent scene.
 
 ## What's new in 1.6.0
 

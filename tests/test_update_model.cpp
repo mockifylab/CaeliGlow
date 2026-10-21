@@ -129,6 +129,62 @@ static void test_picks_highest_among_many() {
   CHECK(res.latestVersion == "v1.5.0");
 }
 
+static void test_install_progress() {
+  std::printf("test_install_progress\n");
+  // Empty log: a small positive fraction so the bar is visibly alive.
+  {
+    auto p = parseInstallProgress("");
+    CHECK(p.fraction > 0.0F);
+    CHECK(!p.done);
+    CHECK(!p.failed);
+  }
+  // Git download advances the fraction inside the download band (0.05-0.35).
+  {
+    auto p = parseInstallProgress("Receiving objects:  50% (50/100)\n");
+    CHECK(p.fraction > 0.05F);
+    CHECK(p.fraction < 0.35F);
+    CHECK(p.phase.find("Downloading") != std::string::npos);
+  }
+  // Build progress maps ninja [n/m] into the build band (0.36-0.85).
+  {
+    auto p = parseInstallProgress(">> Building CaeliGlow\n[150/300] Compiling\n");
+    CHECK(p.fraction > 0.55F);
+    CHECK(p.fraction < 0.70F);
+    CHECK(p.phase.find("Building") != std::string::npos);
+  }
+  // Progress never regresses across stages; install lands at >= 0.87.
+  {
+    std::string log =
+        "Receiving objects: 100% (100/100)\n"
+        ">> Building CaeliGlow\n"
+        "[300/300] Linking\n"
+        ">> Installing into /usr/local\n";
+    auto p = parseInstallProgress(log);
+    CHECK(p.fraction >= 0.87F);
+    CHECK(p.phase.find("Installing") != std::string::npos);
+  }
+  // Shell restart marker approaches completion but is not yet done.
+  {
+    auto p = parseInstallProgress("Restarting the running CaeliGlow shell\n");
+    CHECK(p.fraction >= 0.95F);
+    CHECK(!p.done);
+  }
+  // Success sentinel: done, not failed, full bar.
+  {
+    auto p = parseInstallProgress("[300/300] Linking\nCAELIGLOW_UPDATE_EXIT=0\n");
+    CHECK(p.done);
+    CHECK(!p.failed);
+    CHECK(p.fraction > 0.99F);
+  }
+  // Failure sentinel: done and failed, with the captured error line.
+  {
+    auto p = parseInstallProgress("error: something broke\nCAELIGLOW_UPDATE_EXIT=1\n");
+    CHECK(p.done);
+    CHECK(p.failed);
+    CHECK(p.error.find("error:") != std::string::npos);
+  }
+}
+
 int main() {
   test_version_compare();
   test_up_to_date();
@@ -140,6 +196,7 @@ int main() {
   test_malformed();
   test_prerelease_policy();
   test_picks_highest_among_many();
+  test_install_progress();
 
   if (g_failures == 0) {
     std::printf("\nALL UPDATE/VERSION TESTS PASSED\n");

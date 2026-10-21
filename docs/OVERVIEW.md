@@ -86,6 +86,11 @@ Why this wins:
   edge; the icon set settles into a cohesive outlined house style with a restrained
   hover lift (reduced-motion aware); and external-monitor brightness works out of the box
   via tri-state DDC/CI auto-discovery with `brightness-rescan` / `brightness-status`.
+- **1.6.1 in-place, no-terminal updates.** Settings › About → "Install now" now applies a
+  new release **without a terminal**: the quick-install runs fully detached (surviving the
+  shell's own restart), streams a **live progress bar and phase label** parsed from the real
+  download/build/install output, elevates privileges via a polkit prompt when there is no
+  terminal, and restarts the running shell into the new version — settings and state kept.
 
 The signature interactions ship **enabled by compiled-in defaults**, so a stock CaeliGlow
 build shows them with no config; everything stays additive and overridable.
@@ -105,13 +110,13 @@ build shows them with no config; everything stays additive and overridable.
 ## Quality bar (current evidence)
 
 - Baseline Noctalia v5.3.0 builds and links a working binary.
-- Patches 0001–0018 rebuild + relink cleanly.
-- `meson test` suite: **154/154 pass, 0 fail** (config schema/validate/override cover the
+- Patches 0001–0019 rebuild + relink cleanly.
+- `meson test` suite: **155/155 pass, 0 fail** (config schema/validate/override cover the
   new fields).
 - Standalone version/update logic tests: **all pass** (and wired into CI).
 - Nested Hyprland smoke test: shell starts and runs stable with hover-to-open, edges, the
   power pill and the About page active — host session untouched.
-- Full `0001→0016` series applies onto a pristine v5.3.0 via `git am --3way`.
+- Full `0001→0019` series applies onto a pristine v5.3.0 via `git am --3way`.
 - Example config validates against the patched binary.
 
 ## Positioning & identity

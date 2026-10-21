@@ -1,0 +1,630 @@
+From f59d83501a32f17336b9edb313a2c06ac4cb2752 Mon Sep 17 00:00:00 2001
+From: caeliglow-validate <caeliglow@local>
+Date: Wed, 21 Oct 2026 08:42:37 +0500
+Subject: [PATCH] caeliglow: install updates in place with a live progress bar,
+ no terminal
+
+The About page's "Install" action now downloads, rebuilds and applies a new
+CaeliGlow release without opening a terminal, streaming live progress into the
+card and restarting the running shell into the new version when it finishes.
+
+- installUpdate() launches the same quick-install one-liner that first installed
+  CaeliGlow, but fully detached (double-fork + setsid) so it survives the shell's
+  own restart, redirecting all output to ~/.cache/caeliglow/update.log.
+- The About card polls that log on a 250 ms main-loop Timer and drives a native
+  ProgressBar plus a phase Label directly, so no worker-thread marshaling is
+  needed. On the exit sentinel it reports success or the captured error.
+- caeliglow/update_model.hpp gains a pure, side-effect-free parseInstallProgress()
+  that turns captured installer output into a 0..1 fraction and a phase label
+  (download 0.05-0.35, build 0.36-0.85, install 0.87, restart 0.95), watching the
+  CAELIGLOW_UPDATE_EXIT sentinel for completion.
+- tests/update_model_test.cpp covers both the update decision logic and the new
+  progress parser (registered in meson.build; suite is 155/155).
+- Privilege elevation moves to a TTY-aware escalator in the installer: sudo when
+  run from a terminal, otherwise a graphical polkit prompt via pkexec.
+---
+ meson.build                                   |   1 +
+ src/caeliglow/update_model.hpp                |  88 ++++++++++
+ src/shell/settings/settings_content_about.cpp | 159 +++++++++++++++---
+ src/shell/settings/settings_content_about.h   |  24 ++-
+ src/shell/settings/settings_window.h          |  21 ++-
+ src/shell/settings/settings_window_scene.cpp  |   7 +-
+ tests/update_model_test.cpp                   | 131 +++++++++++++++
+ 7 files changed, 400 insertions(+), 31 deletions(-)
+ create mode 100644 tests/update_model_test.cpp
+
+diff --git a/meson.build b/meson.build
+index 9f1284d10..dc5bbc7e9 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1311,6 +1311,7 @@ if build_tests
+     'upower_charge_limit',
+     'upower_device_catalog',
+     'uri',
++    'update_model',
+     'vdir_reader',
+     'virtual_grid_view_gesture',
+     'wallpaper_scan_symlink',
+diff --git a/src/caeliglow/update_model.hpp b/src/caeliglow/update_model.hpp
+index 83af21303..294463ff1 100644
+--- a/src/caeliglow/update_model.hpp
++++ b/src/caeliglow/update_model.hpp
+@@ -14,6 +14,8 @@
+ //     update script, which itself backs up and validates before touching files.
+ #pragma once
+ 
++#include <algorithm>
++#include <regex>
+ #include <string>
+ #include <vector>
+ 
+@@ -196,4 +198,90 @@ inline UpdateResult evaluate(const std::string& installedVersion, int status, co
+   return res;
+ }
+ 
++// ── In-place install progress (no-terminal updater) ────────────────────────────
++// The About page runs scripts/quick-install.sh fully detached, redirecting all of
++// its output to a log file it then polls. This turns that captured output into a
++// single 0..1 fraction plus a short phase label. Progress bands: download (git
++// "Receiving objects") 0.05-0.35, build (ninja "[n/m]") 0.36-0.85, install 0.87,
++// shell restart 0.95. The launcher appends a final "CAELIGLOW_UPDATE_EXIT=<code>"
++// sentinel that marks completion. Pure and side-effect free so it is unit testable
++// against captured installer logs.
++struct InstallProgress {
++  float fraction = 0.0F; // 0..1 overall
++  std::string phase;     // human label for the current stage
++  bool done = false;     // exit sentinel seen
++  bool failed = false;   // exit sentinel was non-zero
++  std::string error;     // last error-looking line, shown when failed
++};
++
++inline InstallProgress parseInstallProgress(const std::string& log) {
++  InstallProgress out;
++  out.fraction = 0.02F;
++  out.phase = "Starting update\u2026";
++
++  static const std::regex receiving(R"(Receiving objects:\s*([0-9]{1,3})%)");
++  static const std::regex deltas(R"(Resolving deltas:\s*([0-9]{1,3})%)");
++  static const std::regex ninja(R"(\[([0-9]+)/([0-9]+)\])");
++  static const std::regex exitSentinel(R"(CAELIGLOW_UPDATE_EXIT=([0-9]+))");
++
++  std::smatch m;
++  std::size_t pos = 0;
++  while (pos <= log.size()) {
++    const std::size_t nl = log.find('\n', pos);
++    std::string line = (nl == std::string::npos) ? log.substr(pos) : log.substr(pos, nl - pos);
++    if (!line.empty() && line.back() == '\r') {
++      line.pop_back();
++    }
++
++    if (std::regex_search(line, m, exitSentinel)) {
++      out.done = true;
++      out.failed = (m[1].str() != "0");
++      out.fraction = out.failed ? out.fraction : 1.0F;
++      out.phase = out.failed ? "Update failed." : "Update applied \u2014 restarting the shell\u2026";
++    } else if (std::regex_search(line, m, receiving)) {
++      const int pct = std::stoi(m[1].str());
++      out.fraction = 0.05F + static_cast<float>(pct) / 100.0F * 0.30F;
++      out.phase = "Downloading CaeliGlow\u2026 " + std::to_string(pct) + "%";
++    } else if (std::regex_search(line, m, deltas)) {
++      out.fraction = std::max(out.fraction, 0.33F);
++      out.phase = "Downloading CaeliGlow\u2026";
++    } else if (line.rfind(">> Installing build dependencies", 0) == 0) {
++      out.fraction = std::max(out.fraction, 0.34F);
++      out.phase = "Installing build dependencies\u2026";
++    } else if (line.rfind(">> Applying the CaeliGlow patch series", 0) == 0) {
++      out.fraction = std::max(out.fraction, 0.35F);
++      out.phase = "Applying the patch series\u2026";
++    } else if (line.rfind(">> Building CaeliGlow", 0) == 0) {
++      out.fraction = std::max(out.fraction, 0.36F);
++      out.phase = "Building CaeliGlow\u2026";
++    } else if (std::regex_search(line, m, ninja)) {
++      const long n = std::stol(m[1].str());
++      const long total = std::stol(m[2].str());
++      const float frac = total > 0 ? static_cast<float>(n) / static_cast<float>(total) : 0.0F;
++      out.fraction = std::max(out.fraction, 0.36F + frac * 0.49F);
++      out.phase = "Building CaeliGlow\u2026 " + m[1].str() + "/" + m[2].str();
++    } else if (line.rfind(">> Installing into", 0) == 0) {
++      out.fraction = std::max(out.fraction, 0.87F);
++      out.phase = "Installing\u2026";
++    } else if (line.find("Restarting the running CaeliGlow shell") != std::string::npos) {
++      out.fraction = std::max(out.fraction, 0.95F);
++      out.phase = "Applying update \u2014 restarting the shell\u2026";
++    } else if (line.rfind(">> Installed. Summary:", 0) == 0) {
++      out.fraction = std::max(out.fraction, 0.97F);
++    }
++
++    if (line.find("error:") != std::string::npos || line.rfind("E: ", 0) == 0) {
++      out.error = line;
++    }
++
++    if (nl == std::string::npos) {
++      break;
++    }
++    pos = nl + 1;
++  }
++
++  out.fraction = std::clamp(out.fraction, 0.0F, 1.0F);
++  return out;
++}
++
+ }  // namespace caeliglow
+diff --git a/src/shell/settings/settings_content_about.cpp b/src/shell/settings/settings_content_about.cpp
+index b6c404c32..3f3ee947c 100644
+--- a/src/shell/settings/settings_content_about.cpp
++++ b/src/shell/settings/settings_content_about.cpp
+@@ -14,6 +14,7 @@
+ #include "config/config_service.h"
+ #include "core/files/resource_paths.h"
+ #include "core/log.h"
++#include "core/process/process.h"
+ #include "net/http_client.h"
+ #include "net/url_open.h"
+ #include "render/core/image_decoder.h"
+@@ -21,10 +22,11 @@
+ #include "render/core/texture_manager.h"
+ #include "shell/settings/settings_content_common.h"
+ #include "shell/settings/settings_window.h"
+-#include "system/terminal_launch.h"
+ #include "ui/builders.h"
+ #include "ui/controls/flex.h"
+ #include "ui/controls/image.h"
++#include "ui/controls/label.h"
++#include "ui/controls/progress_bar.h"
+ #include "ui/palette.h"
+ #include "ui/style.h"
+ #include "util/file_utils.h"
+@@ -32,7 +34,9 @@
+ #include <chrono>
+ #include <cstddef>
+ #include <filesystem>
++#include <fstream>
+ #include <memory>
++#include <sstream>
+ #include <string>
+ #include <vector>
+ 
+@@ -240,7 +244,43 @@ namespace settings {
+             })
+         );
+       }
+-      if (!ctx.updateInFlight && ctx.onInstallUpdate) {
++      if (ctx.installRunning) {
++        // In-place install running with no terminal: a live bar + phase line that the
++        // shell updates directly from the detached installer's progress log.
++        ProgressBar* bar = nullptr;
++        updateCard->addChild(
++            ui::progressBar({
++                .out = &bar,
++                .fill = colorSpecFromRole(ColorRole::Primary),
++                .track = colorSpecFromRole(ColorRole::SurfaceVariant),
++                .radius = 5.0F * scale,
++                .orientation = ProgressBarOrientation::HorizontalCentered,
++                .progress = ctx.installProgress,
++                .width = 420.0F * scale,
++                .height = 10.0F * scale,
++            })
++        );
++        if (ctx.installBarOut != nullptr) {
++          *ctx.installBarOut = bar;
++        }
++        Label* phase = nullptr;
++        updateCard->addChild(
++            ui::label({
++                .out = &phase,
++                .text = ctx.installPhase.empty() ? std::string("Applying update\u2026") : ctx.installPhase,
++                .fontSize = Style::fontSizeCaption * scale,
++                .color = colorSpecFromRole(ColorRole::OnSurfaceVariant),
++                .maxWidth = 420.0F * scale,
++            })
++        );
++        if (ctx.installPhaseOut != nullptr) {
++          *ctx.installPhaseOut = phase;
++        }
++        updateCard->addChild(label(
++            "Keep CaeliGlow open \u2014 it restarts itself into the new version when this finishes.",
++            Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
++        ));
++      } else if (!ctx.updateInFlight && ctx.onInstallUpdate) {
+         updateCard->addChild(
+             ui::button({
+                 .text = "Install " + (ctx.updateVersion.empty() ? std::string("latest") : ctx.updateVersion) + " now",
+@@ -250,8 +290,9 @@ namespace settings {
+             })
+         );
+         updateCard->addChild(label(
+-            "Updates the system in place: CaeliGlow is rebuilt, replaces the running version and "
+-            "restarts with your settings and state kept. Watch the terminal for progress.",
++            "Updates in place, right here \u2014 no terminal. CaeliGlow is downloaded and rebuilt with "
++            "the progress shown above, then the running shell restarts itself into the new version. "
++            "Your settings and state are kept.",
+             Style::fontSizeCaption * scale, ColorRole::OnSurfaceVariant
+         ));
+       }
+@@ -276,8 +317,8 @@ namespace settings {
+         "An animated launcher avatar and a consistent CaeliGlow accent across the shell.",
+         "Fluid, tunable panel motion with ten presets and a reduce-motion switch.",
+         "This native Settings About page with private, one-request update checks.",
+-        "Updates install in place from this page \u2014 \u201cInstall now\u201d shows what's new, then rebuilds and "
+-        "replaces CaeliGlow, keeping your settings.",
++        "Updates install in place from this page \u2014 \u201cInstall now\u201d shows what's new, then "
++        "downloads, rebuilds and restarts CaeliGlow with a live progress bar, keeping your settings.",
+     };
+     for (const std::string& feature : features) {
+       featureCard->addChild(label("\u2022  " + feature, Style::fontSizeBody * scale, ColorRole::OnSurface));
+@@ -366,29 +407,103 @@ void SettingsWindow::checkForUpdates() {
+   });
+ }
+ 
+-// CaeliGlow: installing an update means installing the new release over this one,
+-// in place. The same quick-install one-liner that first installed CaeliGlow is run
+-// in a terminal window (visible progress, user watches it finish); the script
+-// rebuilds from the tagged release and restarts the shell without touching
+-// ~/.config/caeliglow or the state/cache directories.
++// CaeliGlow: installing an update runs the same quick-install one-liner that first
++// installed CaeliGlow, but FULLY DETACHED and with no terminal window. Its output is
++// redirected to a log file the About page polls to drive a live progress bar, and the
++// script's final step restarts the running shell into the new version. Detached
++// (double-fork + setsid) is essential: the installer kills this very shell to relaunch
++// it, so a child of the shell would be taken down mid-restart. Settings and state in
++// ~/.config/caeliglow and the state/cache dirs are never touched.
+ void SettingsWindow::installUpdate() {
+-  static const std::string kInstaller = "curl -fsSL https://raw.githubusercontent.com/"
++  if (m_installRunning) {
++    return; // an install is already in progress
++  }
++
++  const std::string logPath = FileUtils::expandUserPath("~/.cache/caeliglow/update.log").string();
++  const std::string installerUrl = "https://raw.githubusercontent.com/"
+       + std::string(caeliglow::kRepoOwner)
+       + "/"
+       + std::string(caeliglow::kRepoName)
+-      + "/main/scripts/quick-install.sh | bash";
+-
+-  if (terminal_launch::launch(kInstaller)) {
+-    m_aboutStatusText = "Installer terminal launched for v"
+-        + (m_aboutUpdateVersion.empty() ? std::string("latest") : m_aboutUpdateVersion)
+-        + ". CaeliGlow is replaced in place; your settings and state are kept.";
+-    m_aboutUpdateError = false;
+-    m_aboutUpdateAvailable = false; // one-shot: the button is gone once the installer runs
+-  } else {
+-    m_aboutStatusText = "Could not open a terminal to run the installer. Run the quick-install command manually.";
++      + "/main/scripts/quick-install.sh";
++
++  // Truncate the log, run the installer capturing all output to it, then append the
++  // exit-code sentinel the poller watches for completion.
++  const std::string command = "mkdir -p \"$HOME/.cache/caeliglow\"; : > '"
++      + logPath
++      + "'; "
++        "{ curl -fsSL '"
++      + installerUrl
++      + "' | bash; echo \"CAELIGLOW_UPDATE_EXIT=$?\"; } "
++        ">> '"
++      + logPath
++      + "' 2>&1";
++
++  if (!process::runAsync(command)) {
++    m_aboutStatusText = "Could not start the updater. Run the quick-install command manually.";
+     m_aboutUpdateError = true;
++    requestContentRebuild();
++    return;
+   }
++
++  m_installRunning = true;
++  m_installDone = false;
++  m_installFailed = false;
++  m_installFraction = 0.0F;
++  m_installPhase = "Starting update\u2026";
++  m_installError.clear();
+   requestContentRebuild();
++  startInstallPoll();
++}
++
++// CaeliGlow: poll the detached installer's log on the main loop until it reports the
++// exit sentinel (~250 ms is well below the seconds-long build, so the bar stays live).
++void SettingsWindow::startInstallPoll() {
++  m_installTimer.startRepeating(std::chrono::milliseconds(250), [this]() { pollInstallProgress(); });
++}
++
++void SettingsWindow::pollInstallProgress() {
++  const std::string logPath = FileUtils::expandUserPath("~/.cache/caeliglow/update.log").string();
++
++  std::string contents;
++  if (std::ifstream file(logPath); file) {
++    std::ostringstream buffer;
++    buffer << file.rdbuf();
++    contents = buffer.str();
++  }
++
++  const caeliglow::InstallProgress progress = caeliglow::parseInstallProgress(contents);
++
++  m_installFraction = progress.fraction;
++  m_installPhase = progress.phase;
++  if (progress.done && progress.failed && m_installError.empty()) {
++    m_installError = progress.error.empty() ? "The installer reported a failure." : progress.error;
++  }
++
++  // Drive the live nodes directly (they are null when About is not currently shown,
++  // but the state above is kept so the next rebuild renders the correct value).
++  if (m_installBar != nullptr) {
++    m_installBar->setProgress(progress.fraction);
++  }
++  if (m_installPhaseLabel != nullptr) {
++    m_installPhaseLabel->setText(m_installPhase);
++  }
++
++  if (progress.done) {
++    m_installTimer.stop();
++    m_installRunning = false;
++    m_installDone = true;
++    m_installFailed = progress.failed;
++    if (progress.failed) {
++      m_aboutStatusText = "Update failed: " + m_installError;
++      m_aboutUpdateError = true;
++      m_aboutUpdateAvailable = true; // keep the button so the user can retry
++    } else {
++      m_aboutStatusText = "Update applied \u2014 CaeliGlow is restarting into the new version.";
++      m_aboutUpdateError = false;
++      m_aboutUpdateAvailable = false;
++    }
++    requestContentRebuild();
++  }
+ }
+ 
+ // ── SettingsWindow animated About logo ─────────────────────────────────────────
+diff --git a/src/shell/settings/settings_content_about.h b/src/shell/settings/settings_content_about.h
+index 1963c90ac..1e6c19f84 100644
+--- a/src/shell/settings/settings_content_about.h
++++ b/src/shell/settings/settings_content_about.h
+@@ -6,6 +6,8 @@
+ 
+ class Flex;
+ class Image;
++class Label;
++class ProgressBar;
+ 
+ namespace settings {
+ 
+@@ -16,16 +18,24 @@ namespace settings {
+     float scale = 1.0F;
+     std::string_view selectedSection;
+     bool offlineMode = false;
+-    std::string installedVersion;     // CaeliGlow version baked into this build
+-    std::string noctaliaBaseVersion;  // base Noctalia release the patch series is pinned to
+-    std::string updateStatusText;     // last update-check result; empty until the first check
++    std::string installedVersion;    // CaeliGlow version baked into this build
++    std::string noctaliaBaseVersion; // base Noctalia release the patch series is pinned to
++    std::string updateStatusText;    // last update-check result; empty until the first check
+     bool updateInFlight = false;
+-    bool updateIsError = false;       // render updateStatusText in the error color
++    bool updateIsError = false; // render updateStatusText in the error color
+     // CaeliGlow: when the last check found a newer release, About offers an
+-    // in-place install (runs the quick-install script in a terminal window).
++    // in-place install (no terminal; it streams live progress and restarts the shell).
+     bool updateAvailable = false;
+-    std::string updateVersion;   // newest release tag when updateAvailable
+-    std::string updateNotes;     // release-notes body (plain text) when updateAvailable
++    std::string updateVersion; // newest release tag when updateAvailable
++    std::string updateNotes;   // release-notes body (plain text) when updateAvailable
++    // CaeliGlow: while an in-place install runs (no terminal), About swaps the Install
++    // button for a live progress bar + phase label. SettingsWindow drives those two
++    // nodes directly from a poll timer, so they are handed back via the out-pointers.
++    bool installRunning = false;
++    float installProgress = 0.0F; // 0..1 initial fill
++    std::string installPhase;     // initial phase text under the bar
++    ProgressBar** installBarOut = nullptr;
++    Label** installPhaseOut = nullptr;
+     Flex* pageTitleRow = nullptr;
+     std::function<void()> onCheckForUpdates;
+     std::function<void()> onInstallUpdate;
+diff --git a/src/shell/settings/settings_window.h b/src/shell/settings/settings_window.h
+index cc641b944..5dc628c27 100644
+--- a/src/shell/settings/settings_window.h
++++ b/src/shell/settings/settings_window.h
+@@ -52,6 +52,7 @@ class IdleManager;
+ class Image;
+ class Input;
+ class Label;
++class ProgressBar;
+ class RenderContext;
+ class Renderer;
+ class ThumbnailService;
+@@ -144,8 +145,12 @@ public:
+   void setHttpClient(HttpClient* http) { m_httpClient = http; }
+   // CaeliGlow: run the update check and reflect the result into the About section.
+   void checkForUpdates();
+-  // CaeliGlow: in-place update install (quick-launches the quick-install script in a terminal).
++  // CaeliGlow: in-place update install, no terminal. Runs the quick-install script
++  // fully detached (so it survives the shell's own restart), streaming progress to a
++  // log file that the About page polls to drive its in-card progress bar.
+   void installUpdate();
++  void startInstallPoll();
++  void pollInstallProgress();
+   // Backs plugin-store thumbnails; trimmed when the window closes.
+   void setAsyncTextureCache(AsyncTextureCache* cache) { m_asyncTextures = cache; }
+   void initializeDialogPresenter(
+@@ -295,6 +300,20 @@ private:
+   std::string m_aboutUpdateVersion; // CaeliGlow: newest release tag when an update was found
+   std::string m_aboutUpdateNotes;   // CaeliGlow: release-notes body shown in About
+   bool m_aboutUpdateAvailable = false;
++  // CaeliGlow: in-app update install state. The detached installer writes progress to
++  // ~/.cache/caeliglow/update.log; a main-loop timer parses it and updates the captured
++  // About nodes directly, so the bar animates without rebuilding the page each tick.
++  // All of this is touched only on the main loop (the installer is a separate process),
++  // so these are plain members, not atomics.
++  bool m_installRunning = false;
++  bool m_installDone = false;
++  bool m_installFailed = false;
++  float m_installFraction = 0.0F;
++  std::string m_installPhase;
++  std::string m_installError;
++  Timer m_installTimer;
++  ProgressBar* m_installBar = nullptr;  // non-owning; re-captured on each About rebuild
++  Label* m_installPhaseLabel = nullptr; // non-owning
+   // CaeliGlow: animated brand mark in the About header. Decoded GIF frames live as
+   // GPU textures across content rebuilds; the Image pointer is re-attached on each rebuild.
+   std::vector<TextureHandle> m_aboutLogoFrames;
+diff --git a/src/shell/settings/settings_window_scene.cpp b/src/shell/settings/settings_window_scene.cpp
+index 5b4655ace..3f2892ec8 100644
+--- a/src/shell/settings/settings_window_scene.cpp
++++ b/src/shell/settings/settings_window_scene.cpp
+@@ -1,6 +1,6 @@
+-#include "calendar/calendar_service.h"
+ #include "caeliglow/meta.hpp"
+ #include "caeliglow/version.hpp"
++#include "calendar/calendar_service.h"
+ #include "compositors/compositor_detect.h"
+ #include "compositors/compositor_platform.h"
+ #include "config/config_service.h"
+@@ -1224,6 +1224,11 @@ void SettingsWindow::rebuildSettingsContent() {
+             .updateAvailable = m_aboutUpdateAvailable,
+             .updateVersion = m_aboutUpdateVersion,
+             .updateNotes = m_aboutUpdateNotes,
++            .installRunning = m_installRunning,
++            .installProgress = m_installFraction,
++            .installPhase = m_installPhase,
++            .installBarOut = &m_installBar,
++            .installPhaseOut = &m_installPhaseLabel,
+             .pageTitleRow = m_pageTitleRow,
+             .onCheckForUpdates = [this]() { checkForUpdates(); },
+             .onInstallUpdate = [this]() { installUpdate(); },
+diff --git a/tests/update_model_test.cpp b/tests/update_model_test.cpp
+new file mode 100644
+index 000000000..7dddd3664
+--- /dev/null
++++ b/tests/update_model_test.cpp
+@@ -0,0 +1,131 @@
++// CaeliGlow: unit tests for the pure update decision logic and the no-terminal
++// installer progress parser in caeliglow/update_model.hpp. Both are side-effect
++// free, so they are exercised against captured GitHub JSON and installer logs
++// without any network or process access.
++#include "caeliglow/update_model.hpp"
++#include "tests/test_check.h"
++
++#include <cmath>
++#include <string>
++
++namespace {
++
++  bool nearlyEqual(float lhs, float rhs, float eps = 1e-3F) { return std::fabs(lhs - rhs) < eps; }
++
++  // A GitHub "/releases" array with one entry, for driving evaluate().
++  std::string oneRelease(const std::string& tag, bool prerelease = false, const std::string& body = "notes") {
++    return std::string(R"([{"tag_name":")")
++        + tag
++        + R"(","name":")"
++        + tag
++        + R"(","body":")"
++        + body
++        + R"(","prerelease":)"
++        + (prerelease ? "true" : "false")
++        + "}]";
++  }
++
++  void testEvaluate() {
++    // Up to date: installed equals the newest stable release.
++    {
++      const auto r = caeliglow::evaluate("1.6.0", 200, oneRelease("v1.6.0"));
++      TEST_CHECK(r.state == caeliglow::UpdateState::UpToDate);
++    }
++    // Update available: a newer stable release exists.
++    {
++      const auto r = caeliglow::evaluate("1.6.0", 200, oneRelease("v1.6.1"));
++      TEST_CHECK(r.state == caeliglow::UpdateState::UpdateAvailable);
++      TEST_CHECK(r.latestVersion == "v1.6.1");
++      TEST_CHECK(!r.notes.empty());
++    }
++    // Highest wins when several are listed out of order.
++    {
++      const std::string body = R"([{"tag_name":"v1.5.0"},{"tag_name":"v1.7.2"},{"tag_name":"v1.6.1"}])";
++      const auto r = caeliglow::evaluate("1.6.0", 200, body);
++      TEST_CHECK(r.state == caeliglow::UpdateState::UpdateAvailable);
++      TEST_CHECK(r.latestVersion == "v1.7.2");
++    }
++    // Prereleases are ignored on the stable channel.
++    {
++      const auto r = caeliglow::evaluate("1.6.0", 200, oneRelease("v9.9.9", /*prerelease=*/true));
++      TEST_CHECK(r.state == caeliglow::UpdateState::NoReleases);
++    }
++    // Transport failure / rate limit / server error / malformed body.
++    TEST_CHECK(caeliglow::evaluate("1.6.0", 0, "").state == caeliglow::UpdateState::Offline);
++    TEST_CHECK(caeliglow::evaluate("1.6.0", 403, "").state == caeliglow::UpdateState::RateLimited);
++    TEST_CHECK(caeliglow::evaluate("1.6.0", 429, "").state == caeliglow::UpdateState::RateLimited);
++    TEST_CHECK(caeliglow::evaluate("1.6.0", 500, "").state == caeliglow::UpdateState::Error);
++    TEST_CHECK(caeliglow::evaluate("1.6.0", 200, "not json").state == caeliglow::UpdateState::Error);
++    // An invalid installed version is surfaced as an error rather than compared.
++    TEST_CHECK(caeliglow::evaluate("garbage", 200, oneRelease("v1.6.1")).state == caeliglow::UpdateState::Error);
++  }
++
++  void testParseInstallProgress() {
++    // Empty log: a small positive fraction so the bar is visibly alive.
++    {
++      const auto p = caeliglow::parseInstallProgress("");
++      TEST_CHECK(p.fraction > 0.0F);
++      TEST_CHECK(!p.done);
++      TEST_CHECK(!p.failed);
++    }
++    // Git download advances the fraction inside the download band (0.05-0.35).
++    {
++      const auto p = caeliglow::parseInstallProgress("Receiving objects:  50% (50/100)\n");
++      TEST_CHECK(p.fraction > 0.05F);
++      TEST_CHECK(p.fraction < 0.35F);
++      TEST_CHECK(p.phase.find("Downloading") != std::string::npos);
++    }
++    // Build progress maps ninja [n/m] into the build band (0.36-0.85).
++    {
++      const auto p = caeliglow::parseInstallProgress(">> Building CaeliGlow\n[150/300] Compiling\n");
++      // 150/300 lands near the middle of the build band; assert a safe range.
++      TEST_CHECK(p.fraction > 0.55F);
++      TEST_CHECK(p.fraction < 0.70F);
++      TEST_CHECK(p.phase.find("Building") != std::string::npos);
++    }
++    // Progress never regresses across stages.
++    {
++      const std::string log = "Receiving objects: 100% (100/100)\n"
++                              ">> Building CaeliGlow\n"
++                              "[300/300] Linking\n"
++                              ">> Installing into /usr/local\n";
++      const auto p = caeliglow::parseInstallProgress(log);
++      TEST_CHECK(p.fraction >= 0.87F);
++      TEST_CHECK(p.phase.find("Installing") != std::string::npos);
++    }
++    // Shell restart marker approaches completion but is not yet done.
++    {
++      const auto p = caeliglow::parseInstallProgress("Restarting the running CaeliGlow shell\n");
++      TEST_CHECK(p.fraction >= 0.95F);
++      TEST_CHECK(!p.done);
++    }
++    // Success sentinel: done, not failed, full bar.
++    {
++      const std::string log = "[300/300] Linking\nCAELIGLOW_UPDATE_EXIT=0\n";
++      const auto p = caeliglow::parseInstallProgress(log);
++      TEST_CHECK(p.done);
++      TEST_CHECK(!p.failed);
++      TEST_CHECK(nearlyEqual(p.fraction, 1.0F));
++    }
++    // Failure sentinel: done and failed, with the captured error line.
++    {
++      const std::string log = "error: something broke\nCAELIGLOW_UPDATE_EXIT=1\n";
++      const auto p = caeliglow::parseInstallProgress(log);
++      TEST_CHECK(p.done);
++      TEST_CHECK(p.failed);
++      TEST_CHECK(p.error.find("error:") != std::string::npos);
++    }
++    // Carriage-return progress lines are tolerated.
++    {
++      const auto p = caeliglow::parseInstallProgress("Receiving objects: 100% (100/100)\r\n");
++      TEST_CHECK(p.fraction > 0.30F);
++    }
++  }
++
++} // namespace
++
++int main() {
++  testEvaluate();
++  testParseInstallProgress();
++  return 0;
++}
+-- 
+2.56.0
+

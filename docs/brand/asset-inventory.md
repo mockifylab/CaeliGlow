@@ -12,10 +12,9 @@ it by `scripts/gen_logo_assets.py` so shell, README, and app icon never drift ap
 | `logo.png` | PNG | 512×512, transparent | Favicon, avatar, app icon | `scripts/gen_logo_assets.py` |
 | `logo-animated.gif` | GIF | ~272px, calm breathing loop | **Animated mark** — restrained pulse + twinkle | `scripts/gen_logo_assets.py` |
 | `wordmark.svg` | SVG | 560×128 viewBox | README/headers title lockup (mark + "CaeliGlow") | embeds `logo.png`; regenerate after changing it |
-| `hero-animated.gif` | GIF | 1000×563, ~516 KB | **Animated GitHub hero** — cinematic moon scene, twinkling stars | `scripts/gen_hero.py` |
-| `hero.png` | PNG | 1280 wide | Static hero (fallback / where GIF not wanted) | `scripts/gen_hero.py` |
-| `hero-source.png` | PNG | 1672×941 | Authored source scene the hero is derived from | keep as the regeneration source |
-| `social-preview.png` | PNG | 1280×640, ~816 KB | GitHub repo "Social preview" (Settings → Social preview) | `scripts/gen_hero.py`; ≤ 1 MB, sRGB |
+| `hero.png` | PNG | 1280×720 | **README hero** — eclipse mark + "CaeliGlow" wordmark over a dark code backdrop (static since v1.6.1) | `scripts/gen_hero.py` |
+| `hero-source.png` | PNG | 1672×941 | Authored hero art the derivatives come from | keep as the regeneration source |
+| `social-preview.png` | PNG | 1280×640, ~248 KB | GitHub repo "Social preview" (Settings → Social preview) | `scripts/gen_hero.py`; ≤ 1 MB, sRGB |
 | `logo.svg`, `logo-animated.svg`, `frames/` | SVG | 512×512 | **Legacy** procedural crescent (pre-v1.6 mark) | kept for history; superseded by `logo-source.png` |
 
 ## In-shell assets (`upstream/noctalia/assets/caeliglow/`)
@@ -33,7 +32,7 @@ Noctalia's `install_subdir('assets', …)`):
 
 ```sh
 python3 scripts/gen_logo_assets.py    # logo PNG/GIFs: docs + in-shell (from logo-source.png)
-python3 scripts/gen_hero.py           # hero GIF/PNG + social-preview (needs hero-source.png)
+python3 scripts/gen_hero.py           # hero.png + social-preview (needs hero-source.png)
 ```
 
 ## Provenance & licensing

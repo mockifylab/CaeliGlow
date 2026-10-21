@@ -25,9 +25,10 @@ ringed by smaller **twinkling gold sparkles**. It reads as "a glow in the night 
   About.
 - **Wordmark lockup** — `assets/wordmark.svg`: mark + "CaeliGlow" + eyebrow. Use for
   headers, README, titles.
-- **Hero / social preview** — `assets/hero-animated.gif` (motion) and
+- **Hero / social preview** — `assets/hero.png` (README hero, 1280×720) and
   `assets/social-preview.png` (1280×640, <1 MB, for the GitHub "Social preview" setting):
-  the cinematic moon-over-a-dreamscape banner.
+  the eclipse mark with the "CaeliGlow" wordmark over a dark code backdrop (static
+  since v1.6.1; the earlier animated crescent-scene hero was retired).
 
 Rules:
 

@@ -8,6 +8,47 @@ from the single canonical `VERSION` file.
 
 _(nothing pending)_
 
+## [1.6.1] - 2026-10-21
+
+CaeliGlow 1.6.1 makes updates feel like part of the shell. Installing a new
+release from Settings › About now runs entirely in place — it downloads, rebuilds
+and restarts CaeliGlow with a live progress bar and phase label, opens no terminal
+window, and keeps your settings and state throughout. The GitHub hero artwork is
+refreshed to the current eclipse mark. Delivered as patch **0019** over the same
+pinned Noctalia v5.3.0.
+
+### Changed
+- **In-place, no-terminal updates (patch 0019).** The About "Install" action now
+  launches the quick-install script **fully detached** (so it survives the shell's
+  own restart), streaming its output to `~/.cache/caeliglow/update.log`. The card
+  polls that log on a main-loop timer and drives a native progress bar plus a
+  phase label, then restarts the running shell into the new version on completion.
+- **Privilege elevation without a terminal.** The installer is now TTY-aware: it
+  uses `sudo` when run from a terminal and falls back to a graphical polkit prompt
+  via `pkexec` when launched from the app. Build-dependency install and
+  `meson install` route through the same escalator.
+- **New GitHub hero.** The repository header now uses a single authored eclipse +
+  wordmark image (`hero.png`, static); the older animated crescent-scene GIF and
+  the duplicate wordmark block were retired.
+
+### Added
+- **`caeliglow::parseInstallProgress`.** A pure, unit-tested parser that turns
+  captured installer output into a 0..1 fraction and a short phase label
+  (download · build · install · restart), watching a `CAELIGLOW_UPDATE_EXIT`
+  sentinel for completion.
+- **`tests/update_model_test.cpp`.** Covers both the update decision logic and the
+  new progress parser; the suite is now **155/155**.
+
+### Fixed
+- **CI `shell-build` restored.** The GitHub Actions build job had failed since
+  v1.5.0 because the pinned Noctalia submodule was never populated: checkout
+  auto-init misconfigured the token for the foreign submodule remote, and
+  `apply-patches.sh` tested the submodule `.git` gitlink with `-d` (a submodule
+  stores it as a *file*, not a directory). The workflow now checks out without
+  submodules and runs `git submodule update --init` over plain network, and the
+  guard uses an existence test. The standalone `unit-logic` job now also covers
+  `parseInstallProgress`.
+
 ## [1.6.0] - 2026-10-20
 
 CaeliGlow 1.6.0 is the polish release: the launcher and power menu gain real sizing and

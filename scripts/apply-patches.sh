@@ -8,7 +8,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NOCTALIA_DIR="${CAELIGLOW_NOCTALIA_DIR:-$HERE/upstream/noctalia}"
 SERIES="$HERE/patches/series"
 
-if [[ ! -d "$NOCTALIA_DIR/.git" ]]; then
+# A populated submodule stores .git as a gitlink FILE ("gitdir: ..."), while a
+# standalone clone stores it as a DIRECTORY. Test for existence, not -d, so the
+# pinned submodule checkout is correctly recognised as present.
+if [[ ! -e "$NOCTALIA_DIR/.git" ]]; then
   echo "error: Noctalia checkout not found at: $NOCTALIA_DIR" >&2
   echo "       Run 'git submodule update --init --recursive' first." >&2
   exit 1

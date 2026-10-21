@@ -388,6 +388,22 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
   settings persistence for every new key covered by `config_schema_roundtrip`; series
   0001→0018 verified byte-identical on a pristine v5.3.0.
 
+## 0019 — in-place, no-terminal updates with a live progress bar
+- **Files:** `caeliglow/update_model.hpp` (new `parseInstallProgress`), settings About
+  (`settings_content_about.{h,cpp}`, `settings_window.h`, `settings_window_scene.cpp`),
+  `meson.build`, `tests/update_model_test.cpp`
+- **What:** installing a new release from Settings › About no longer opens a terminal. The
+  quick-install runs **fully detached** (double-fork + setsid) so it survives the shell's
+  own restart, streaming output to `~/.cache/caeliglow/update.log`; the About card polls
+  that log on a main-loop timer and drives a native **progress bar + phase label**, then
+  **restarts the running shell** into the new version. `parseInstallProgress` turns the
+  captured output into a 0..1 fraction and a label (download · build · install · restart),
+  watching a `CAELIGLOW_UPDATE_EXIT` sentinel for completion. The installer pairs this with
+  a **TTY-aware escalator** — `sudo` from a terminal, `pkexec` (polkit) otherwise — and
+  `git --progress` so the download emits percentages without a TTY.
+- **Status:** **compiled + tested** (155/155, incl. the new `update_model` test); series
+  0001→0019 verified byte-identical on a pristine v5.3.0.
+
 ---
 
 ## Notes on safety of the model

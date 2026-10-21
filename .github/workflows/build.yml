@@ -15,7 +15,8 @@ on:
 
 jobs:
   # Fast, dependency-light guard: compile + run the standalone CaeliGlow logic
-  # (version comparison + update state machine). Uses only g++ + nlohmann-json.
+  # (version comparison + update state machine + installer progress parser).
+  # Uses only g++ + nlohmann-json.
   unit-logic:
     runs-on: ubuntu-latest
     steps:
@@ -36,6 +37,13 @@ jobs:
     container:
       image: archlinux/archlinux:latest
     steps:
+      # Check out the outer repo WITHOUT touching submodules. Auto-initialising
+      # them here makes checkout configure the GitHub token for the submodule's
+      # foreign remote (noctalia-dev/noctalia), which then fails and silently
+      # leaves upstream/noctalia empty.
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'false'
       - name: Install toolchain + Noctalia deps
         run: |
           pacman -Syu --noconfirm
@@ -45,9 +53,13 @@ jobs:
             libxkbcommon glib2 libsecret libsodium sdbus-cpp libpipewire wireplumber polkit \
             pam curl libwebp libjxl libsndfile librsvg libqalculate libxml2 md4c \
             tomlplusplus libical nlohmann-json stb jemalloc
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      # Populate the pinned Noctalia checkout with plain network (no token),
+      # then apply the CaeliGlow patch series onto it.
+      - name: Initialize pinned Noctalia submodule
+        run: |
+          git submodule update --init upstream/noctalia
+          git -C upstream/noctalia status --short
+          test -e upstream/noctalia/.git
       - name: Apply patch series
         run: ./scripts/apply-patches.sh
       - name: Configure + build (debug)
