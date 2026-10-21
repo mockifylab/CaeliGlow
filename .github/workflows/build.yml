@@ -37,6 +37,14 @@ jobs:
     container:
       image: archlinux/archlinux:latest
     steps:
+      # The Arch container ships WITHOUT git. If checkout runs before git exists
+      # it silently falls back to downloading a source archive with no .git, and
+      # every later `git submodule` / `git am` then fails with
+      # "fatal: not a git repository". Install git as the very first step.
+      - name: Bootstrap git (required for a real checkout)
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git
       # Check out the outer repo WITHOUT touching submodules. Auto-initialising
       # them here makes checkout configure the GitHub token for the submodule's
       # foreign remote (noctalia-dev/noctalia), which then fails and silently
@@ -46,9 +54,8 @@ jobs:
           submodules: 'false'
       - name: Install toolchain + Noctalia deps
         run: |
-          pacman -Syu --noconfirm
           pacman -S --noconfirm --needed \
-            git meson ninja gcc just pkgconf \
+            meson ninja gcc just pkgconf \
             wayland wayland-protocols libglvnd freetype2 fontconfig cairo pango harfbuzz \
             libxkbcommon glib2 libsecret libsodium sdbus-cpp libpipewire wireplumber polkit \
             pam curl libwebp libjxl libsndfile librsvg libqalculate libxml2 md4c \
