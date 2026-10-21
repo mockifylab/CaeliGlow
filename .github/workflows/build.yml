@@ -90,22 +90,23 @@ jobs:
         # failure, including every CaeliGlow-authored test, still fails the job.
         run: |
           set +e
-          meson test -C build-debug --print-errorlogs
+          out="$(meson test -C build-debug --print-errorlogs 2>&1)"
           rc=$?
-          set -e
-          if [[ "$rc" -eq 0 ]]; then exit 0; fi
-          python3 - <<'PY'
-          import json, sys
-          d = json.load(open("build-debug/meson-logs/testlog.json"))
-          bad = {r["name"].split(":", 1)[-1] for r in d["tests"] if r["result"] != "OK"}
-          allowed = {"annotation_raster", "template_undo_signal"}
-          extra = bad - allowed
-          if extra:
-              print("FAIL: unexpected test failure(s):", ", ".join(sorted(extra)))
-              sys.exit(1)
-          print("OK: only container-sensitive upstream test(s) failed:",
-                ", ".join(sorted(bad)) or "(none)")
-          PY
+          printf '%s\n' "$out"
+          if [ "$rc" -eq 0 ]; then exit 0; fi
+          # Names of failing tests from the summary table, e.g.
+          #   "  4/155 noctalia:annotation_raster   FAIL   0.02s"
+          failed="$(printf '%s\n' "$out" | grep -oE 'noctalia:[a-z0-9_]+[[:space:]]+FAIL' | sed -E 's/^noctalia://; s/[[:space:]]+FAIL$//' | sort -u)"
+          allowed="$(printf '%s\n' annotation_raster template_undo_signal | sort -u)"
+          extra="$(comm -23 <(printf '%s\n' "$failed") <(printf '%s\n' "$allowed"))"
+          if [ -n "$extra" ]; then
+            echo "FAIL: unexpected test failure(s):"
+            printf '%s\n' "$extra"
+            exit 1
+          fi
+          echo "OK: only container-sensitive upstream test(s) failed:"
+          printf '%s\n' "$failed"
+          exit 0
       - name: Stage release artifacts (on v* tags)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
