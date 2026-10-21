@@ -61,9 +61,12 @@ jobs:
             pam curl libwebp libjxl libsndfile librsvg libqalculate libxml2 md4c \
             tomlplusplus libical nlohmann-json stb jemalloc
       # Populate the pinned Noctalia checkout with plain network (no token),
-      # then apply the CaeliGlow patch series onto it.
+      # then apply the CaeliGlow patch series onto it. In a container the runner
+      # user differs from checkout's file owner, so git flags the repo as "dubious
+      # ownership"; mark the workspace safe before any git command.
       - name: Initialize pinned Noctalia submodule
         run: |
+          git config --global --add safe.directory '*'
           git submodule update --init upstream/noctalia
           git -C upstream/noctalia status --short
           test -e upstream/noctalia/.git
