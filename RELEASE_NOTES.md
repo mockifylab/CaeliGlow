@@ -183,13 +183,13 @@ See [docs/BUILDING.md](docs/BUILDING.md) and [docs/UPDATING.md](docs/UPDATING.md
 
 ## Verification
 
-- Patches 0001–0016 rebuild + relink cleanly against the pinned tree.
-- Noctalia `meson test` suite: **153/153 pass, 0 fail** (with the `[caeliglow]` schema
-  round-trip probe added).
+- Patches 0001–0019 rebuild + relink cleanly against the pinned tree.
+- Noctalia `meson test` suite: **155/155 pass, 0 fail** (with the `[caeliglow]` schema
+  round-trip probe and the update/install-progress parser tests added).
 - Version/update logic unit tests pass (locally and in CI).
 - Nested Hyprland smoke test: the shell starts and runs stable with hover-to-open,
   edge actions, the power pill and the About page active; the host session is untouched.
-- Full `0001→0016` series applies onto a pristine v5.3.0 via `git am --3way`,
+- Full `0001→0019` series applies onto a pristine v5.3.0 via `git am --3way`,
   reconstructing the tree byte-for-byte.
 - Example config validates against the patched binary.
 - **On-device smoke test** (live Hyprland, multi-monitor/fractional scaling) is still to
