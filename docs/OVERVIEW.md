@@ -91,6 +91,14 @@ Why this wins:
   shell's own restart), streams a **live progress bar and phase label** parsed from the real
   download/build/install output, elevates privileges via a polkit prompt when there is no
   terminal, and restarts the running shell into the new version — settings and state kept.
+- **1.7.0 redesign.** The launcher docks to the **bottom edge with concave corners** and can
+  no longer float on a bare launch; hover interactions across the shell (bar widgets,
+  glyph-button icons) switch from Noctalia's rigid linear slide to a **smooth spring**
+  (`EaseOutBack` in, `EaseOutCubic` out) with a paint-only **scale-pop on hover**; the power
+  pill's hover highlight is fixed (translucent cards stay translucent) and gains **subtle
+  separators** between its icons; and the Settings About hero gets a matching **card** with
+  an enlarged brand mark. All motion is re-implemented from standard easing math — MIT, no
+  GPL code copied.
 
 The signature interactions ship **enabled by compiled-in defaults**, so a stock CaeliGlow
 build shows them with no config; everything stays additive and overridable.
@@ -110,13 +118,13 @@ build shows them with no config; everything stays additive and overridable.
 ## Quality bar (current evidence)
 
 - Baseline Noctalia v5.3.0 builds and links a working binary.
-- Patches 0001–0019 rebuild + relink cleanly.
+- Patches 0001–0020 rebuild + relink cleanly (full build 569/569).
 - `meson test` suite: **155/155 pass, 0 fail** (config schema/validate/override cover the
   new fields).
 - Standalone version/update logic tests: **all pass** (and wired into CI).
 - Nested Hyprland smoke test: shell starts and runs stable with hover-to-open, edges, the
   power pill and the About page active — host session untouched.
-- Full `0001→0019` series applies onto a pristine v5.3.0 via `git am --3way`.
+- Full `0001→0020` series applies onto a pristine v5.3.0 via `git am --3way`.
 - Example config validates against the patched binary.
 
 ## Positioning & identity

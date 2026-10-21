@@ -8,6 +8,35 @@ from the single canonical `VERSION` file.
 
 _(nothing pending)_
 
+## [1.7.0] - 2026-10-21
+
+CaeliGlow 1.7 is the redesign pass: the launcher finally docks to the bottom edge
+with concave screen corners, every hover interaction becomes a smooth spring instead
+of Noctalia's rigid linear slide, bar icons animate on hover, the power pill's hover
+highlight is fixed and gains subtle separators between its icons, and the Settings
+About hero gets a proper card with an enlarged brand mark. Delivered as patch **0020**
+over the same pinned Noctalia v5.3.0. Everything stays MIT and no GPL code was copied
+— the new motion is re-implemented from standard easing mathematics.
+
+### Changed
+- **Bottom-docked, concave launcher (patch 0020).** The launcher now always attaches to
+  the screen's bottom edge and rises with the same signature concave flare as the power
+  pill (`[caeliglow] concavity`). A bare launch with no config service never floats, and
+  the shipped `example.toml` defaults `launcher_placement = "attached"`.
+- **Smooth non-linear motion everywhere.** Bar-widget hover and the Settings/icon-button
+  glyph lift now use a springy `EaseOutBack` settle on the way in and a clean
+  `EaseOutCubic` on the way out (no abrupt linear snap), matched to the existing elastic
+  panel-reveal presets.
+- **Animated icons on hover across the shell.** Hovering any bar widget now springs its
+  content up to a `1.08×` scale-pop (paint-only, so layout and click targets are
+  untouched); glyph buttons lift their icon with the same plush curve.
+- **Power-menu hover highlight fixed + separators (patch 0020).** A translucent ghost
+  card no longer snaps to a fully opaque theme Hover swatch — every state background
+  (normal/hover/pressed/selected) is faded by the panel card opacity. Subtle hairline
+  dividers now separate the stacked power icons.
+- **About hero card + larger mark (patch 0020).** The animated CaeliGlow mark sits in the
+  same card style as the other blocks on the page and is enlarged for a proper brand hero.
+
 ## [1.6.1] - 2026-10-21
 
 CaeliGlow 1.6.1 makes updates feel like part of the shell. Installing a new

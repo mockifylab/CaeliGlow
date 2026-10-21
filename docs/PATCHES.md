@@ -404,6 +404,23 @@ git reset --hard a33122c4          # return the submodule to its pinned commit
 - **Status:** **compiled + tested** (155/155, incl. the new `update_model` test); series
   0001→0019 verified byte-identical on a pristine v5.3.0.
 
+## 0020 — v1.7 redesign: bottom-docked concave launcher, springy hover, animated icons, power-menu fix, About hero card
+- **Files:** `launcher/launcher_panel.{h,cpp}`, `example.toml`, `bar/bar.cpp`,
+  `ui/controls/button.cpp`, `session/caeliglow_power_panel.cpp`,
+  `settings/settings_content_about.cpp`
+- **What:** the launcher is forced to the bottom edge (attached fallback when there is no
+  config, and a `dockConcavityRadius()` override so its screen-edge corners flare like the
+  power pill); `example.toml` defaults `launcher_placement = "attached"`. Bar-widget hover
+  and glyph-button icon lift switch to a springy `EaseOutBack`-in / `EaseOutCubic`-out curve,
+  and hovering a bar widget now scale-pops its content (`1.08×`, paint-only transform, so
+  layout and hit targets are untouched). The power pill's translucent ghost card no longer
+  snaps to an opaque Hover swatch — every palette state bg is faded by the card opacity —
+  and subtle hairline separators now divide the stacked icons. The Settings About hero gains
+  the same card style as the other blocks and an enlarged brand mark. No GPL code was copied;
+  the motion is re-implemented from standard easing math.
+- **Status:** **compiled + tested** (full build 569/569, `meson test` 155/155, 0 fail); series
+  0001→0020 verified byte-identical on a pristine v5.3.0.
+
 ---
 
 ## Notes on safety of the model

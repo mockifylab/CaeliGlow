@@ -1,6 +1,6 @@
 # Maintainer: mockifylab <https://github.com/mockifylab/CaeliGlow>
 pkgname=caeliglow
-pkgver=1.6.1
+pkgver=1.7.0
 pkgrel=1
 pkgdesc='CaeliGlow desktop shell: Noctalia 5.3.0 plus the CaeliGlow patch series, with its own config namespace'
 arch=(x86_64)

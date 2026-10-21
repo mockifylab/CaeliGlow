@@ -1,0 +1,269 @@
+From 046cc808f535aee69ff90b2134177627f81e8542 Mon Sep 17 00:00:00 2001
+From: caeliglow-validate <caeliglow@local>
+Date: Wed, 21 Oct 2026 13:22:58 +0500
+Subject: [PATCH] caeliglow: v1.7 bottom-docked concave launcher, springy hover
+ animations, animated bar icons, power-menu hover fix + separators, About hero
+ card
+
+---
+ example.toml                                  |  2 +-
+ src/shell/bar/bar.cpp                         | 23 +++++++++++++++----
+ src/shell/launcher/launcher_panel.cpp         | 14 ++++++++++-
+ src/shell/launcher/launcher_panel.h           |  3 +++
+ src/shell/session/caeliglow_power_panel.cpp   | 23 ++++++++++++++++++-
+ src/shell/settings/settings_content_about.cpp | 23 +++++++++++++------
+ src/ui/controls/button.cpp                    | 17 +++++++++++---
+ 7 files changed, 87 insertions(+), 18 deletions(-)
+
+diff --git a/example.toml b/example.toml
+index 902a93dca..3204a0d1d 100644
+--- a/example.toml
++++ b/example.toml
+@@ -66,7 +66,7 @@ borders               = true        # panel shell outline and in-panel section c
+ border_color          = "outline"   # floating panel outline color: theme role token or #RRGGBB
+ border_width          = 1.0         # floating panel outline width in px, 0 hides the stroke
+ shadow                = true        # cast the global [shell.shadow] from panel surfaces
+-launcher_placement       = "floating" # attached | floating
++launcher_placement       = "attached" # attached | floating (CaeliGlow default: bottom-edge dock with concave corners)
+ clipboard_placement      = "floating" # attached | floating
+ control_center_placement = "attached" # attached | floating
+ wallpaper_placement      = "attached" # attached | floating
+diff --git a/src/shell/bar/bar.cpp b/src/shell/bar/bar.cpp
+index b6e7f230a..32dfc70c9 100644
+--- a/src/shell/bar/bar.cpp
++++ b/src/shell/bar/bar.cpp
+@@ -13,6 +13,7 @@
+ #include "ipc/ipc_service.h"
+ #include "render/render_context.h"
+ #include "render/scene/input_area.h"
++#include "render/scene/node.h"
+ #include "shell/bar/bar_corner_shape.h"
+ #include "shell/bar/bar_reserved_zone.h"
+ #include "shell/bar/widget.h"
+@@ -2955,20 +2956,32 @@ void Bar::animateWidgetHoverHighlight(BarInstance& instance, Widget& widget, boo
+     return;
+   }
+   const ColorSpec fill = widget.widgetForegroundOr(colorSpecFromRole(ColorRole::OnSurface));
++  // CaeliGlow: give the hovered widget's content a springy scale-pop so icons animate on
++  // hover across the whole bar. layoutBoundsNode() is a paint-time transform, so it does
++  // not disturb the bar layout or the widget's hit area.
++  Node* contentNode = widget.layoutBoundsNode();
+   instance.animations.cancelForOwner(box);
++  // EaseOutBack overshoots slightly on the way in (a plush settle); EaseOutCubic on the
++  // way out avoids dipping the scale/alpha below their resting values.
++  const Easing ease = hovered ? Easing::EaseOutBack : Easing::EaseOutCubic;
+   instance.animations.animate(
+-      widget.barHoverProgress(), hovered ? 1.0F : 0.0F, Style::animFast, Easing::EaseOutCubic,
+-      [&widget, box, fill](float progress) {
++      widget.barHoverProgress(), hovered ? 1.0F : 0.0F, Style::animNormal, ease,
++      [&widget, box, fill, contentNode](float progress) {
+         widget.setBarHoverProgress(progress);
+         box->setVisible(progress > 0.001F);
+         box->setFill(scaleAlpha(fill, kWidgetHoverFillAlpha * progress));
++        if (contentNode != nullptr) {
++          contentNode->setTransformOrigin(contentNode->width() * 0.5F, contentNode->height() * 0.5F);
++          const float pop = 1.0F + 0.08F * progress;
++          contentNode->setScale(pop, pop);
++        }
+       },
+       {}, box
+   );
+ 
+-  // CaeliGlow: the icon "pop" zoom used to live here. Removed on purpose -- hovering a widget
+-  // now reveals that widget's panel instead (see Bar::handleWidgetHoverReveal). The tint above
+-  // stays as the only whole-widget hover feedback.
++  // CaeliGlow: the icon now springs with the hover progress above; hovering a widget still
++  // reveals that widget's panel too (see Bar::handleWidgetHoverReveal). The tint and the pop
++  // are the whole-widget hover feedback.
+   if (instance.surface != nullptr) {
+     instance.surface->requestRedraw();
+   }
+diff --git a/src/shell/launcher/launcher_panel.cpp b/src/shell/launcher/launcher_panel.cpp
+index 223667212..183751783 100644
+--- a/src/shell/launcher/launcher_panel.cpp
++++ b/src/shell/launcher/launcher_panel.cpp
+@@ -1436,7 +1436,9 @@ float LauncherPanel::preferredHeight() const {
+ }
+ 
+ PanelPlacement LauncherPanel::panelPlacement() const noexcept {
+-  return m_config != nullptr ? m_config->config().shell.panel.launcherPlacement : PanelPlacement::Floating;
++  // CaeliGlow: the signature layout docks the launcher to the bottom edge. When there
++  // is no config service yet (null), fall back to Attached so a bare launch never floats.
++  return m_config != nullptr ? m_config->config().shell.panel.launcherPlacement : PanelPlacement::Attached;
+ }
+ 
+ std::string LauncherPanel::dockToScreenEdge() const {
+@@ -1452,6 +1454,16 @@ bool LauncherPanel::fillsWidth() const noexcept {
+   return false;
+ }
+ 
++float LauncherPanel::dockConcavityRadius() const {
++  // CaeliGlow: use the shared [caeliglow] concavity so the bottom dock's screen-edge
++  // corners flare exactly like the power pill instead of the generic xl surface radius.
++  if (m_config == nullptr) {
++    return 0.0F;
++  }
++  const auto& cg = m_config->config().caeliglow;
++  return scaled(static_cast<float>(std::max(2, cg.concavity)));
++}
++
+ void LauncherPanel::applyProviderConfig(LauncherProvider& provider) const {
+   std::string triggerWord = std::string(provider.defaultPrefix());
+   std::string prefix = "/";
+diff --git a/src/shell/launcher/launcher_panel.h b/src/shell/launcher/launcher_panel.h
+index 01f10b3a3..fff4ba90f 100644
+--- a/src/shell/launcher/launcher_panel.h
++++ b/src/shell/launcher/launcher_panel.h
+@@ -71,6 +71,9 @@ public:
+   // fillsWidth is false.
+   [[nodiscard]] bool fillsWidth() const noexcept override;
+   [[nodiscard]] std::string dockToScreenEdge() const override;
++  // CaeliGlow: the bottom-docked launcher uses the signature concave flare
++  // ([caeliglow] concavity) so its screen-edge corners match the power pill.
++  [[nodiscard]] float dockConcavityRadius() const override;
+   [[nodiscard]] LayerShellKeyboard keyboardMode() const override { return LayerShellKeyboard::Exclusive; }
+   [[nodiscard]] InputArea* initialFocusArea() const override;
+   [[nodiscard]] bool handleGlobalKey(std::uint32_t sym, std::uint32_t modifiers, bool pressed, bool preedit) override;
+diff --git a/src/shell/session/caeliglow_power_panel.cpp b/src/shell/session/caeliglow_power_panel.cpp
+index 3c2949d95..38b3cc48d 100644
+--- a/src/shell/session/caeliglow_power_panel.cpp
++++ b/src/shell/session/caeliglow_power_panel.cpp
+@@ -32,6 +32,8 @@ namespace {
+   constexpr float kMinButton = 24.0F;
+   constexpr float kMinLogo = 28.0F;
+   constexpr float kMinInner = 48.0F;
++  // CaeliGlow: the subtle hairline dividers between the stacked power icons (unscaled px).
++  constexpr float kPowerSeparatorThickness = 1.0F;
+ 
+   const CaeliGlowConfig kFallbackCg{};
+ 
+@@ -80,7 +82,9 @@ CaeliGlowPowerPanel::Metrics CaeliGlowPowerPanel::metrics() const {
+   const float inner = std::max(kMinInner, m.width - 2.0F * m.padding);
+   m.button = std::max(kMinButton, std::min(kButtonSize * m.scale, inner));
+   m.logo = std::max(kMinLogo, std::min(kLogoSize * m.scale, inner));
+-  m.height = 4.0F * m.button + m.logo + 4.0F * m.gap + 2.0F * m.padding;
++  // Layout: Logout | sep | Power | logo | Lock | sep | Restart = 7 children (6 gaps) +
++  // 2 hairline separators. The separator footprint stays at thickness (spacing = 0).
++  m.height = 4.0F * m.button + m.logo + 2.0F * kPowerSeparatorThickness + 6.0F * m.gap + 2.0F * m.padding;
+   return m;
+ }
+ 
+@@ -155,6 +159,21 @@ void CaeliGlowPowerPanel::create() {
+       })
+   );
+ 
++  // CaeliGlow: a subtle hairline divider between the stacked power icons. The logo is
++  // its own visual break between the top (Logout/Power) and bottom (Lock/Restart) pairs,
++  // so no divider is drawn adjacent to it.
++  const float sepWidth = m.button * scale;
++  auto makeSeparator = [&]() {
++    return ui::separator({
++        .color = colorSpecFromRole(ColorRole::Outline),
++        .thickness = kPowerSeparatorThickness * scale,
++        .spacing = 0.0F,
++        .orientation = SeparatorOrientation::HorizontalRule,
++        .gradientEdges = true,
++        .width = sepWidth,
++    });
++  };
++
+   for (std::size_t i = 0; i < m_entries.size(); ++i) {
+     std::unique_ptr<Button> btn(createActionButton(m_entries[i].cfg, i, scale));
+     m_entries[i].button = btn.get();
+@@ -164,6 +183,8 @@ void CaeliGlowPowerPanel::create() {
+     root->addChild(std::move(btn));
+     if (i == 1) {
+       root->addChild(std::move(logoBtn)); // logo sits between Power and Lock
++    } else if (i + 1 < m_entries.size()) {
++      root->addChild(makeSeparator());
+     }
+   }
+ 
+diff --git a/src/shell/settings/settings_content_about.cpp b/src/shell/settings/settings_content_about.cpp
+index 3f3ee947c..8e853f183 100644
+--- a/src/shell/settings/settings_content_about.cpp
++++ b/src/shell/settings/settings_content_about.cpp
+@@ -140,19 +140,28 @@ namespace settings {
+     content.addChild(std::move(pageCol));
+ 
+     // ── Hero: animated CaeliGlow mark, name, tagline, version ────────────────
+-    auto heroCol = ui::column({
+-        .align = FlexAlign::Center,
+-        .gap = Style::spaceSm * scale,
+-        .padding = Style::spaceLg * scale,
+-        .fillWidth = true,
+-    });
++    // CaeliGlow: the hero now sits in the same card style as every other block on this
++    // page (addSettingsCard uses kCardFillOpacity = 0.4), and the brand mark is enlarged.
++    auto heroCol = ui::column(
++        {
++            .out = nullptr,
++            .align = FlexAlign::Center,
++            .gap = Style::spaceSm * scale,
++            .padding = Style::spaceLg * scale,
++            .fillWidth = true,
++            .configure =
++                [scale](Flex& container) {
++                  container.setCardStyle(scale, 0.4F);
++                },
++        }
++    );
+     Flex* hero = heroCol.get();
+     page->addChild(std::move(heroCol));
+ 
+     // The node is created empty; SettingsWindow decodes the GIF and drives its frames
+     // (see attachAboutLogo). Pointer handed back via ctx.logoOut.
+     Image* logoImage = nullptr;
+-    const float heroLogo = Style::fontSizeHeader * scale * 3.2F;
++    const float heroLogo = Style::fontSizeHeader * scale * 5.0F;
+     hero->addChild(
+         ui::image({
+             .out = &logoImage,
+diff --git a/src/ui/controls/button.cpp b/src/ui/controls/button.cpp
+index 7a33f6d8e..816aa0bac 100644
+--- a/src/ui/controls/button.cpp
++++ b/src/ui/controls/button.cpp
+@@ -387,8 +387,8 @@ void Button::animateGlyphLift(bool hovered) {
+   if (!m_enabled || m_hoverSuppressed) {
+     hovered = false;
+   }
+-  constexpr float kHoverScale = 1.06F;
+-  constexpr float kGlyphLiftMs = 140.0F;
++  constexpr float kHoverScale = 1.08F;
++  constexpr float kGlyphLiftMs = 170.0F;
+   const float to = hovered ? kHoverScale : 1.0F;
+   if (to == m_glyph->scale()) {
+     return;
+@@ -403,8 +403,11 @@ void Button::animateGlyphLift(bool hovered) {
+   }
+   // MotionService disabled or reduced motion active: AnimationManager::animate
+   // snaps straight to the target, so the lift never becomes a bounce.
++  // CaeliGlow: EaseOutBack springs the glyph past its target on the way in (a plush,
++  // non-linear pop); EaseOutCubic settles it back down without dipping under rest scale.
++  const Easing liftEasing = hovered ? Easing::EaseOutBack : Easing::EaseOutCubic;
+   m_glyphAnimId = animationManager()->animate(
+-      m_glyph->scale(), to, kGlyphLiftMs, Easing::EaseOutCubic, [this](float value) { m_glyph->setScale(value); },
++      m_glyph->scale(), to, kGlyphLiftMs, liftEasing, [this](float value) { m_glyph->setScale(value); },
+       [this] { m_glyphAnimId = 0; }, m_glyph
+   );
+ }
+@@ -538,8 +541,16 @@ void Button::setSurfaceOpacity(float opacity) {
+ void Button::applyVariant() {
+   m_palette = m_customPalette.value_or(paletteForVariant(m_variant));
+   if (m_surfaceOpacity < 1.0F) {
++    // CaeliGlow: fade *every* state background by the panel card opacity, not just normal/
++    // disabled. Otherwise a translucent ghost card (the power pill) snaps to a fully opaque
++    // theme Hover swatch on hover -- the highlight reads as a hard, mismatched block.
+     m_palette.normal.bg.alpha *= m_surfaceOpacity;
+     m_palette.disabled.bg.alpha *= m_surfaceOpacity;
++    m_palette.hover.bg.alpha *= m_surfaceOpacity;
++    m_palette.pressed.bg.alpha *= m_surfaceOpacity;
++    if (m_palette.selected.has_value()) {
++      m_palette.selected->bg.alpha *= m_surfaceOpacity;
++    }
+   }
+   setBorder(m_palette.normal.border, effectiveBorderWidth());
+ 
+-- 
+2.56.0
+
