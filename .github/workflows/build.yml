@@ -67,6 +67,8 @@ jobs:
       - name: Initialize pinned Noctalia submodule
         run: |
           git config --global --add safe.directory '*'
+          git config --global user.email "ci@caeliglow.local"
+          git config --global user.name "CaeliGlow CI"
           git submodule update --init upstream/noctalia
           git -C upstream/noctalia status --short
           test -e upstream/noctalia/.git
